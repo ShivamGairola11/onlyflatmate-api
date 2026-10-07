@@ -1,0 +1,49 @@
+import { sql } from 'kysely';
+import type { GeoLocation } from '@/types/common';
+
+const EARTH_RADIUS_KM = 6371;
+const toRad = (deg: number) => (deg * Math.PI) / 180;
+const round = (n: number, places: number) => Math.round(n * 10 ** places) / 10 ** places;
+
+/** Great-circle distance in km. */
+export function distanceKm(a: GeoLocation, b: GeoLocation): number {
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
+}
+
+/** Deterministic PRNG, so a listing's fuzzed point is the same every time it's computed. */
+export function seededRandom(seed: string): () => number {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+
+/** The PUBLIC point for a listing: a stable random offset within `radiusMeters`, never the building itself. */
+export function approximateLocation(exact: GeoLocation, radiusMeters: number, seed: string): GeoLocation {
+  const rand = seededRandom(seed);
+  const bearing = rand() * 2 * Math.PI;
+  const dist = (0.35 + rand() * 0.65) * radiusMeters;
+  return {
+    ...exact,
+    latitude: round(exact.latitude + (dist * Math.cos(bearing)) / 111_320, 5),
+    longitude: round(exact.longitude + (dist * Math.sin(bearing)) / (111_320 * Math.cos(toRad(exact.latitude))), 5),
+  };
+}
+
+/** SQL for a geography point from a lat/lng (typed as the column's `string` so it drops into inserts/updates). */
+export const pointSql = (p: { latitude: number; longitude: number }) =>
+  sql<string>`extensions.st_setsrid(extensions.st_makepoint(${p.longitude}, ${p.latitude}), 4326)::extensions.geography`;
+
+/** Select a geography column's latitude / longitude. */
+export const latOf = (column: string) => sql<number>`extensions.st_y(${sql.ref(column)}::extensions.geometry)`;
+export const lngOf = (column: string) => sql<number>`extensions.st_x(${sql.ref(column)}::extensions.geometry)`;

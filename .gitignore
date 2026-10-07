@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local settings and secrets (keep the example)
+.env*
+!.env.example
+
+# Supabase CLI working files
+supabase/.temp/
+supabase/.branches/
+
+.DS_Store
