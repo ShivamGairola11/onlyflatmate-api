@@ -1,7 +1,7 @@
 // Synced from the web app (src/features/payments/types/index.ts) by scripts/sync-contract.mjs — do not edit here.
 import type { ID, ISODateString, Rupees } from "@/types/common";
 
-export type PaymentStatus = "CREATED" | "PENDING" | "SUCCEEDED" | "FAILED";
+export type PaymentStatus = "CREATED" | "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED";
 export type PaymentProvider = "MOCK" | "RAZORPAY" | "STRIPE";
 export type PaymentMethod = "UPI" | "CARD" | "NETBANKING";
 

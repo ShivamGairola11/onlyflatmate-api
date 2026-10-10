@@ -1,19 +1,29 @@
 import { Controller, Get, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { sql } from 'kysely';
+import { AdminController, AdminGuard } from './admin/admin.js';
 import { AuthGuard, Public } from './common/auth.js';
 import { ApiExceptionFilter } from './common/exception.filter.js';
 import { CommuteController } from './commute/commute.controller.js';
 import { CommuteService } from './commute/commute.service.js';
 import { type Database, DbModule, InjectDb } from './db/db.module.js';
-import { FlatmatesController, FlatmatesService } from './flatmates/flatmates.js';
+import {
+  FlatmatesController,
+  FlatmatesService,
+} from './flatmates/flatmates.js';
 import { GroupsController, GroupsService } from './groups/groups.js';
 import { ListingEditorService } from './listings/listing-editor.service.js';
-import { ListingDraftController, ListingsController } from './listings/listings.controller.js';
+import {
+  ListingDraftController,
+  ListingsController,
+} from './listings/listings.controller.js';
 import { ListingsService } from './listings/listings.service.js';
 import { SavedController } from './listings/saved.controller.js';
 import { EventsController, EventsService } from './messaging/events.js';
-import { MessagingController, MessagingService } from './messaging/messaging.js';
+import {
+  MessagingController,
+  MessagingService,
+} from './messaging/messaging.js';
 import { PaymentsController } from './payments/payments.js';
 import { LocationsController } from './places/locations.controller.js';
 import { PlacesService } from './places/places.service.js';
@@ -53,6 +63,7 @@ class HealthController {
     EventsController,
     PaymentsController,
     SafetyController,
+    AdminController,
   ],
   providers: [
     PlacesService,
@@ -65,6 +76,7 @@ class HealthController {
     GroupsService,
     MessagingService,
     EventsService,
+    AdminGuard,
     // Signed-in by default; routes opt out with @Public().
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

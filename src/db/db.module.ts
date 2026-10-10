@@ -1,4 +1,9 @@
-import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Module,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import { config } from '../config.js';
@@ -7,7 +12,14 @@ import type { DB } from './schema.js';
 export const KYSELY = Symbol('KYSELY');
 
 /** The generated public schema, plus the few Supabase auth columns the API reads. */
-export type AppDB = DB & { 'auth.users': { id: string; phone: string | null; email: string | null } };
+export type AppDB = DB & {
+  'auth.users': {
+    id: string;
+    phone: string | null;
+    email: string | null;
+    banned_until: Date | null;
+  };
+};
 export type Database = Kysely<AppDB>;
 
 /** Inject the typed query builder: `constructor(@InjectDb() private db: Database)`. */
@@ -21,7 +33,15 @@ pg.types.setTypeParser(1082, (v) => v);
   providers: [
     {
       provide: KYSELY,
-      useFactory: () => new Kysely<AppDB>({ dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: config.DATABASE_URL, max: 10 }) }) }),
+      useFactory: () =>
+        new Kysely<AppDB>({
+          dialect: new PostgresDialect({
+            pool: new pg.Pool({
+              connectionString: config.DATABASE_URL,
+              max: 10,
+            }),
+          }),
+        }),
     },
   ],
   exports: [KYSELY],

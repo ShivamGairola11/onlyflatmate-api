@@ -13,6 +13,7 @@ import type { FlatmateProfile, FlatmateProfileInput, FlatmateSearchParams } from
 import type { AddMemberInput, CreateGroupInput, FlatGroup, GroupMatch, UpdateGroupInput } from "@/features/groups/types";
 import type {
   CreateListingInput,
+  ListingType,
   EditableListing,
   Listing,
   ListingDraftRecord,
@@ -21,8 +22,8 @@ import type {
   UpdateListingInput,
 } from "@/features/listings/types";
 import type { Conversation, CreateConversationInput, Message, MessagingEvent } from "@/features/messaging/types";
-import type { ConfirmPaymentInput, ContactPass, PaymentOrder } from "@/features/payments/types";
-import type { Profile, User, UserMode } from "@/features/profiles/types";
+import type { ConfirmPaymentInput, ContactPass, PaymentMethod, PaymentOrder, PaymentProvider, PaymentStatus } from "@/features/payments/types";
+import type { Profile, User, UserMode, VerificationStatus, VerificationType } from "@/features/profiles/types";
 import type { ListingDraft } from "@/lib/validation/listing";
 import type { GeoLocation, ID, Report, ReportReason, ReportTargetType } from "@/types/common";
 
@@ -126,6 +127,112 @@ export interface AdminStats {
   payments: number;
   revenueInr: number;
   pendingVerifications: number;
+  newUsers7d: number;
+  activePasses: number;
+  revenue30dInr: number;
+  conversations: number;
+  messages7d: number;
+}
+
+/* --- Admin panel (all routes require profiles.is_admin) ------------------------------------- */
+
+export interface AdminQuery {
+  /** Free-text search: names, emails, phones, ids — whatever the list supports. */
+  q?: string;
+  status?: string;
+  page?: number;
+}
+
+export interface AdminPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminUserRef {
+  id: ID;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface AdminUser extends AdminUserRef {
+  createdAt: string;
+  lastActiveAt: string;
+  isAdmin: boolean;
+  /** Set while the account is banned from signing in. */
+  bannedUntil?: string;
+  listings: number;
+  totalPaidInr: number;
+  passExpiresAt?: string;
+}
+
+export interface AdminPayment {
+  id: ID;
+  user: AdminUserRef;
+  amount: number;
+  provider: PaymentProvider;
+  providerOrderId: string;
+  providerPaymentId?: string;
+  method?: PaymentMethod;
+  status: PaymentStatus;
+  createdAt: string;
+  pass?: { id: ID; expiresAt: string };
+}
+
+export interface AdminPass {
+  id: ID;
+  user: AdminUserRef;
+  startsAt: string;
+  expiresAt: string;
+  active: boolean;
+  paymentId: ID;
+  amount: number;
+  /** Granted by an admin, not bought. */
+  complimentary: boolean;
+}
+
+export type AdminListingStatus = "ACTIVE" | "EXPIRED" | "OCCUPIED";
+
+export interface AdminListing {
+  id: ID;
+  title: string;
+  type: ListingType;
+  locality: string;
+  city: string;
+  rent: number;
+  status: AdminListingStatus;
+  lister: AdminUserRef;
+  createdAt: string;
+  lastConfirmedAt: string;
+  views: number;
+  openReports: number;
+}
+
+export type AdminReportStatus = "OPEN" | "REVIEWED" | "ACTIONED";
+
+export interface AdminReport {
+  id: ID;
+  reporter: AdminUserRef;
+  targetType: ReportTargetType;
+  targetId: ID;
+  /** Listing title, user name or group name; missing if the target was deleted. */
+  targetLabel?: string;
+  /** The person behind the target (lister, user, group owner) — who to ban if needed. */
+  targetUserId?: ID;
+  reason: ReportReason;
+  details?: string;
+  status: AdminReportStatus;
+  createdAt: string;
+}
+
+export interface AdminVerification {
+  id: ID;
+  user: AdminUserRef;
+  type: VerificationType;
+  status: VerificationStatus;
+  verifiedAt?: string;
 }
 
 export interface ApiClient {
@@ -258,5 +365,23 @@ export interface ApiClient {
   };
   admin: {
     stats(): Promise<AdminStats>;
+    users(q: AdminQuery): Promise<AdminPage<AdminUser>>;
+    setBanned(userId: ID, banned: boolean): Promise<void>;
+    setAdmin(userId: ID, isAdmin: boolean): Promise<void>;
+    payments(q: AdminQuery): Promise<AdminPage<AdminPayment>>;
+    /** Full refund through the provider; revokes the pass. */
+    refundPayment(paymentId: ID): Promise<void>;
+    /** Asks the provider whether an unconfirmed payment was actually captured, and grants the pass if so. */
+    syncPayment(paymentId: ID): Promise<void>;
+    passes(q: AdminQuery): Promise<AdminPage<AdminPass>>;
+    extendPass(passId: ID, days: number): Promise<void>;
+    revokePass(passId: ID): Promise<void>;
+    grantPass(userId: ID, days: number): Promise<void>;
+    listings(q: AdminQuery): Promise<AdminPage<AdminListing>>;
+    setListingStatus(listingId: ID, status: AdminListingStatus): Promise<void>;
+    reports(q: AdminQuery): Promise<AdminPage<AdminReport>>;
+    setReportStatus(reportId: ID, status: AdminReportStatus): Promise<void>;
+    verifications(q: AdminQuery): Promise<AdminPage<AdminVerification>>;
+    setVerificationStatus(verificationId: ID, status: Exclude<VerificationStatus, "PENDING">): Promise<void>;
   };
 }
