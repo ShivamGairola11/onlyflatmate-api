@@ -2,6 +2,7 @@
 import { z } from "zod";
 import type { Amenity, BuildingType, ListingType } from "@/features/listings/types";
 import type { BHK, Furnishing, LifestyleTag } from "@/types/common";
+import { CITIES, cityAt } from "@/lib/constants/places";
 import { AMENITY_OPTIONS, BHK_OPTIONS, BUILDING_TYPE_OPTIONS, FURNISHING_OPTIONS, LIFESTYLE_OPTIONS, LISTING_TYPES } from "@/lib/constants/labels";
 
 type Tuple<T extends string> = [T, ...T[]];
@@ -13,14 +14,17 @@ const buildingType = z.enum(BUILDING_TYPE_OPTIONS as Tuple<BuildingType>, { erro
 const amenity = z.enum(AMENITY_OPTIONS as Tuple<Amenity>);
 const lifestyle = z.enum(LIFESTYLE_OPTIONS as Tuple<LifestyleTag>);
 
-const geo = z.object({
-  latitude: z.number().min(28.2).max(28.95),
-  longitude: z.number().min(76.8).max(77.6),
-  locality: z.string().optional(),
-  city: z.string().optional(),
-  region: z.string().optional(),
-  postalCode: z.string().optional(),
-});
+/** A listing's pin must sit inside one of the metros we serve (the same check runs in the API). */
+const geo = z
+  .object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    locality: z.string().optional(),
+    city: z.string().optional(),
+    region: z.string().optional(),
+    postalCode: z.string().optional(),
+  })
+  .refine((p) => !!cityAt(p), { message: `We're live in ${CITIES.map((c) => c.name).join(", ")} — drop the pin inside one of these cities.` });
 
 export const residentSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(40),

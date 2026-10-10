@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LocationSuggestion } from '@/lib/api/contract';
+import { type CityId, cityOfRegion, type Region } from '@/lib/constants/places';
 import type { GeoLocation } from '@/types/common';
 import { distanceKm, latOf, lngOf } from '../common/geo.js';
 import { type Database, InjectDb } from '../db/db.module.js';
@@ -32,8 +33,18 @@ const ALIASES: Record<string, string[]> = {
   'greater-kailash': ['gk', 'gk 1', 'gk1'],
 };
 
+/** Old and new city names match each other (Bombay ↔ Mumbai …). */
 const normalise = (s: string) =>
-  s.toLowerCase().replace(/\bsec(tor)?\.?\s*/g, 'sector ').replace(/gurugram/g, 'gurgaon').replace(/\s+/g, ' ').trim();
+  s
+    .toLowerCase()
+    .replace(/\bsec(tor)?\.?\s*/g, 'sector ')
+    .replace(/gurugram/g, 'gurgaon')
+    .replace(/bombay/g, 'mumbai')
+    .replace(/bangalore/g, 'bengaluru')
+    .replace(/calcutta/g, 'kolkata')
+    .replace(/madras/g, 'chennai')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /**
  * The gazetteer (localities and landmarks). It's small and changes only by
@@ -81,8 +92,8 @@ export class PlacesService {
     return { id, name, shortName: name.length > 22 ? `${name.slice(0, 21)}…` : name, kind: 'CUSTOM', city: near.city, region: near.region, ...point };
   }
 
-  /** Known places matching a query: localities first by relevance, then workplaces / colleges. */
-  async search(query: string): Promise<LocationSuggestion[]> {
+  /** Known places matching a query: the given metro's first, then by relevance. */
+  async search(query: string, city?: CityId): Promise<LocationSuggestion[]> {
     const q = normalise(query);
     if (!q) return [];
     const { localities, landmarks } = await this.load();
@@ -92,18 +103,21 @@ export class PlacesService {
       if (n.includes(q) || aliases.some((a) => a.includes(q))) return 1;
       return 0;
     };
+    const inCity = (region: string) => (city && cityOfRegion(region as Region) === city ? 1 : 0);
     return [
       ...localities.map((l) => ({
+        c: inCity(l.region),
         s: score(`${l.name} ${l.city}`, ALIASES[l.slug]),
         v: { kind: 'LOCALITY' as const, id: l.slug, name: l.name, secondary: l.city, location: { latitude: l.latitude, longitude: l.longitude, locality: l.name, city: l.city } },
       })),
       ...landmarks.map((l) => ({
+        c: inCity(l.region),
         s: score(`${l.name} ${l.shortName}`, ALIASES[l.id]),
         v: { kind: l.kind as 'WORKPLACE' | 'COLLEGE', id: l.id, name: l.name, secondary: l.kind === 'COLLEGE' ? 'College' : 'Workplace', location: { latitude: l.latitude, longitude: l.longitude, city: l.city } },
       })),
     ]
       .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s)
+      .sort((a, b) => b.c - a.c || b.s - a.s)
       .slice(0, 8)
       .map((x) => x.v);
   }

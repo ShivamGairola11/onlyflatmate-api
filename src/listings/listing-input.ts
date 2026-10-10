@@ -1,20 +1,24 @@
 import { z } from 'zod';
+import { cityAt } from '@/lib/constants/places';
 
 /** Server-side check of CreateListingInput / UpdateListingInput (the browser is never trusted). */
 const lifestyle = z.array(z.string().max(30)).max(14);
-const ncrPoint = z.object({
-  latitude: z.number().min(28.2).max(28.95),
-  longitude: z.number().min(76.8).max(77.6),
-  locality: z.string().max(80).optional(),
-  city: z.string().max(60).optional(),
-  region: z.string().max(60).optional(),
-  postalCode: z.string().max(12).optional(),
-});
+/** Inside one of the metros we serve — the same list the web app validates against. */
+const cityPoint = z
+  .object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    locality: z.string().max(80).optional(),
+    city: z.string().max(60).optional(),
+    region: z.string().max(60).optional(),
+    postalCode: z.string().max(12).optional(),
+  })
+  .refine((p) => !!cityAt(p), { message: 'This location is outside the cities we serve.' });
 
 export const listingInput = z
   .object({
     type: z.enum(['PRIVATE_ROOM', 'SHARED_ROOM', 'ENTIRE_FLAT', 'FLATMATE_VACANCY', 'PG']),
-    exactLocation: ncrPoint,
+    exactLocation: cityPoint,
     addressLine: z.string().trim().max(140).optional(),
     property: z.object({
       bhk: z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS']),

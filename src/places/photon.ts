@@ -1,10 +1,10 @@
 import type { LocationSuggestion } from '@/lib/api/contract';
+import { type CityId, getCity, INDIA_BOUNDS } from '@/lib/constants/places';
 import type { GeoLocation } from '@/types/common';
 import { config } from '../config.js';
 
-/** Delhi NCR (west, south, east, north), matching the web map's bounds. */
-const NCR_BBOX = '76.55,28.1,77.85,29.05';
-const NCR_BIAS = { lat: '28.58', lon: '77.2' };
+/** India, in Photon's bbox order (west, south, east, north). */
+const INDIA_BBOX = [INDIA_BOUNDS.west, INDIA_BOUNDS.south, INDIA_BOUNDS.east, INDIA_BOUNDS.north].join(',');
 const TIMEOUT_MS = 5000;
 
 interface PhotonFeature {
@@ -25,7 +25,7 @@ function toSuggestion(f: PhotonFeature): LocationSuggestion | null {
     kind: 'ADDRESS',
     id: `osm:${p.osm_type ?? ''}${p.osm_id ?? `${latitude},${longitude}`}`,
     name,
-    secondary: unique([name === street ? undefined : street, p.locality, p.district, p.city]).filter((s) => s !== name).slice(0, 3).join(', ') || 'Delhi NCR',
+    secondary: unique([name === street ? undefined : street, p.locality, p.district, p.city]).filter((s) => s !== name).slice(0, 3).join(', ') || 'India',
     location: { latitude, longitude, locality: p.locality ?? p.district, city: p.city, postalCode: p.postcode },
   };
 }
@@ -37,11 +37,13 @@ async function request(path: string, params: Record<string, string>) {
   return (body.features ?? []).map(toSuggestion).filter((s): s is LocationSuggestion => !!s);
 }
 
-/** Free-text address search within Delhi NCR. */
-export async function geocode(query: string): Promise<LocationSuggestion[]> {
+/** Free-text address search anywhere in India, ranked towards the given metro. */
+export async function geocode(query: string, cityId?: CityId): Promise<LocationSuggestion[]> {
   const q = query.trim();
   if (q.length < 3) return [];
-  const results = await request('/api/', { q, limit: '8', lang: 'en', bbox: NCR_BBOX, ...NCR_BIAS });
+  const city = getCity(cityId);
+  const bias: Record<string, string> = city ? { lat: String(city.center.latitude), lon: String(city.center.longitude) } : {};
+  const results = await request('/api/', { q, limit: '8', lang: 'en', bbox: INDIA_BBOX, ...bias });
   // The same place often comes back as several OSM objects; keep the first of each name + area.
   const seen = new Set<string>();
   return results.filter((r) => !seen.has(`${r.name}|${r.secondary}`) && seen.add(`${r.name}|${r.secondary}`));

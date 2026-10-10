@@ -24,6 +24,7 @@ import type {
 import type { Conversation, CreateConversationInput, Message, MessagingEvent } from "@/features/messaging/types";
 import type { ConfirmPaymentInput, ContactPass, PaymentMethod, PaymentOrder, PaymentProvider, PaymentStatus } from "@/features/payments/types";
 import type { Profile, User, UserMode, VerificationStatus, VerificationType } from "@/features/profiles/types";
+import type { CityId } from "@/lib/constants/places";
 import type { ListingDraft } from "@/lib/validation/listing";
 import type { GeoLocation, ID, Report, ReportReason, ReportTargetType } from "@/types/common";
 
@@ -299,9 +300,10 @@ export interface ApiClient {
     setMode(mode: UserMode): Promise<Session>;
   };
   locations: {
-    search(query: string): Promise<LocationSuggestion[]>;
-    /** Free-text address search within Delhi NCR (geocoder). */
-    geocode(query: string): Promise<LocationSuggestion[]>;
+    /** Known localities and landmarks; the given city's come first. */
+    search(query: string, city?: CityId): Promise<LocationSuggestion[]>;
+    /** Free-text address search anywhere in India, biased towards the given city (geocoder). */
+    geocode(query: string, city?: CityId): Promise<LocationSuggestion[]>;
     /** Best address for a point, e.g. a pin dropped on the map. */
     reverse(point: GeoLocation): Promise<LocationSuggestion | null>;
   };
