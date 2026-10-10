@@ -1,4 +1,5 @@
 // Synced from the web app (src/features/flatmates/types/index.ts) by scripts/sync-contract.mjs — do not edit here.
+import type { CityId } from "@/lib/constants/places";
 import type {
   BHK,
   Gender,
@@ -48,6 +49,8 @@ export type FlatmateProfileInput = Pick<
 };
 
 export interface FlatmateSearchParams {
+  /** The metro being browsed (header city). Profiles elsewhere are left out. */
+  city?: CityId;
   area?: string;
   budgetMax?: number;
   moveInBefore?: ISODateString;

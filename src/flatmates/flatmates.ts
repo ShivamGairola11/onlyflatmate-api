@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Injectable, Param, ParseUUIDPipe, Put, Query } from '@nestjs/common';
+import { getCity, landmarksIn, localitiesIn } from '@/lib/constants/places';
 import { sql } from 'kysely';
 import { z } from 'zod';
 import type { FlatmateProfile, FlatmateSearchParams } from '@/features/flatmates/types';
@@ -67,6 +68,12 @@ export class FlatmatesService {
     if (viewerId) {
       q = q.where('f.user_id', '!=', viewerId).where('f.user_id', 'not in', this.db.selectFrom('blocks').select('blocked_user_id').where('blocker_id', '=', viewerId));
     }
+    if (p.city) {
+      // In the metro: a preferred area there, or a workplace there (same rule as belongsToCity).
+      const areas = localitiesIn(p.city).map((l) => l.slug);
+      const workplaces = landmarksIn(p.city).map((l) => l.id);
+      q = q.where((eb) => eb.or([sql<boolean>`f.preferred_areas && ${sql.val(areas)}::text[]`, eb('f.workplace_id', 'in', workplaces)]));
+    }
     if (p.area) {
       const localities = await this.places.localities();
       const area = localities.find((l) => l.slug === p.area);
@@ -127,6 +134,7 @@ export class FlatmatesService {
 }
 
 const searchQuery = z.object({
+  city: z.string().max(40).optional().transform((c) => getCity(c)?.id),
   area: z.string().max(80).optional(),
   budgetMax: queryNumber(),
   moveInBefore: z.string().max(40).optional(),

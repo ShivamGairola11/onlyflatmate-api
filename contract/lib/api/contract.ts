@@ -364,7 +364,8 @@ export interface ApiClient {
     removeMine(): Promise<void>;
   };
   groups: {
-    list(): Promise<FlatGroup[]>;
+    /** Groups in the given metro (by their target areas); your own groups are always included. */
+    list(city?: CityId): Promise<FlatGroup[]>;
     get(id: ID): Promise<FlatGroup>;
     create(input: CreateGroupInput): Promise<FlatGroup>;
     /** Organiser only. `peopleNeeded` can't drop below the current member count. */

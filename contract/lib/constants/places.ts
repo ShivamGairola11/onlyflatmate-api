@@ -326,6 +326,16 @@ export function getLandmark(id: string | undefined | null): Landmark | undefined
   return id ? landmarkIndex.get(id) : undefined;
 }
 
+/**
+ * Whether a flatmate profile or group belongs to a metro: any of its areas (locality slugs) is there, or its
+ * workplace is. Shared by the API and the mock so both scope Find a Flatmate / Find Together the same way.
+ */
+export function belongsToCity(city: CityId, areas: readonly string[], workplaceId?: string | null): boolean {
+  if (areas.some((slug) => { const l = getLocality(slug); return !!l && cityOfRegion(l.region) === city; })) return true;
+  const w = getLandmark(workplaceId);
+  return !!w && cityOfRegion(w.region) === city;
+}
+
 /** Default commute destination for a metro: its first listed workplace. */
 export function defaultWorkplace(city: CityId): string {
   return (landmarksIn(city).find((l) => l.kind === "WORKPLACE") ?? LANDMARKS[0]).id;

@@ -49,6 +49,9 @@ export const listingDraftSchema = z
     rent: z.number({ error: "Enter the monthly rent" }).int().min(2000, "Rent looks too low").max(300000, "Rent looks too high"),
     deposit: z.number({ error: "Enter a deposit (0 if none)" }).int().min(0).max(1000000),
     maintenance: z.number({ error: "Enter maintenance (0 if none)" }).int().min(0).max(50000),
+    /** Lister is a broker, or brokerage is charged on this place. Shown on every card when true. */
+    hasBrokerage: z.boolean().optional(),
+    brokerage: z.number().int().min(0).max(1000000).optional(),
     residents: z.array(residentSchema).max(6),
     preferenceGender: z.enum(["MALE", "FEMALE", "ANY"]),
     ageMin: z.number().int().min(18).max(80).optional(),
@@ -63,6 +66,10 @@ export const listingDraftSchema = z
   .refine((d) => d.buildingType !== "OTHER" || (d.buildingTypeOther?.trim().length ?? 0) >= 2, {
     path: ["buildingTypeOther"],
     message: "Describe the building, e.g. CGHS society",
+  })
+  .refine((d) => !d.hasBrokerage || (Number.isFinite(d.brokerage) && (d.brokerage ?? 0) >= 1), {
+    path: ["brokerage"],
+    message: "Enter the brokerage amount",
   })
   .refine((d) => d.ageMin === undefined || d.ageMax === undefined || d.ageMin <= d.ageMax, {
     path: ["ageMax"],

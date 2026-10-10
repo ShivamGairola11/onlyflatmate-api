@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { Body, Controller, Delete, Get, HttpCode, Injectable, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { belongsToCity, type CityId, getCity } from '@/lib/constants/places';
+import { Body, Controller, Delete, Get, HttpCode, Injectable, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { z } from 'zod';
 import type { FlatGroup, GroupMatch, GroupMember, MatchCriterion } from '@/features/groups/types';
 import { forbidden, invalid, notFound } from '../common/api-error.js';
@@ -67,10 +68,14 @@ export class GroupsService {
   }
 
   /** The viewer's own groups first, then newest. */
-  async list(viewerId?: string) {
+  /** Groups in the metro (by target areas), plus the viewer's own wherever they are; theirs first. */
+  async list(viewerId?: string, city?: CityId) {
     const groups = await this.load();
-    const mine = (g: FlatGroup) => (g.members.some((m) => m.userId === viewerId) ? 1 : 0);
-    return groups.sort((a, b) => mine(b) - mine(a) || +new Date(b.createdAt) - +new Date(a.createdAt));
+    // Guard on viewerId: invited-but-not-joined members have no userId, so undefined === undefined would match.
+    const mine = (g: FlatGroup) => (viewerId && g.members.some((m) => m.userId === viewerId) ? 1 : 0);
+    return groups
+      .filter((g) => !city || mine(g) || belongsToCity(city, g.areas))
+      .sort((a, b) => mine(b) - mine(a) || +new Date(b.createdAt) - +new Date(a.createdAt));
   }
 
   private async owned(id: string, userId: string) {
@@ -204,8 +209,8 @@ export class GroupsController {
 
   @Public()
   @Get()
-  list(@OptionalUser() user?: AuthUser) {
-    return this.groups.list(user?.id);
+  list(@OptionalUser() user?: AuthUser, @Query('city') city?: unknown) {
+    return this.groups.list(user?.id, getCity(typeof city === 'string' ? city : undefined)?.id);
   }
 
   @Post()
