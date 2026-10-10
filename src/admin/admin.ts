@@ -18,6 +18,7 @@ import { type Expression, type SqlBool, sql } from 'kysely';
 import { z } from 'zod';
 import type {
   AdminListing,
+  AdminOverview,
   AdminPage,
   AdminPass,
   AdminPayment,
@@ -209,6 +210,109 @@ export class AdminController {
       activePasses: Number(passes.n),
       conversations: Number(conversations.n),
       messages7d: Number(messages.n),
+    };
+  }
+
+  /**
+   * The dashboard: daily series for the range, the same figures for the range before it (for deltas),
+   * and the short lists an admin acts on. Days are India calendar days.
+   */
+  @Get('overview')
+  async overview(@Query() query: unknown): Promise<AdminOverview> {
+    const { days } = z.object({ days: z.coerce.number().pipe(z.union([z.literal(7), z.literal(30), z.literal(90)])).default(30) }).parse(query);
+    const IST = sql.raw("'Asia/Kolkata'");
+    const day = (col: string) => sql`(${sql.ref(col)} at time zone ${IST})::date`;
+    // [start, now) is the range; [prevStart, start) the comparison. Both start at an IST midnight.
+    const start = sql`(((now() at time zone ${IST})::date - ${days - 1}::int)::timestamp at time zone ${IST})`;
+    const prevStart = sql`(((now() at time zone ${IST})::date - ${2 * days - 1}::int)::timestamp at time zone ${IST})`;
+    const run = async <T>(q: ReturnType<typeof sql<T>>) => (await q.execute(this.db)).rows;
+
+    const [daily, kpis, outcomes, methods, listings, localities, attention, recentPayments, recentUsers] = await Promise.all([
+      run(sql<{ date: string; revenue: string; passes: string; signups: string; messages: string }>`
+        with d as (select generate_series(${start}::timestamptz, now(), interval '1 day') as ts)
+        select to_char((d.ts at time zone ${IST})::date, 'YYYY-MM-DD') as date,
+          coalesce(pa.revenue, 0) as revenue, coalesce(pa.passes, 0) as passes,
+          coalesce(pr.signups, 0) as signups, coalesce(m.messages, 0) as messages
+        from d
+        left join (select ${day('created_at')} as day, sum(amount) as revenue, count(*) filter (where amount > 0) as passes
+                   from payments where status = 'SUCCEEDED' and created_at >= ${start} group by 1) pa on pa.day = (d.ts at time zone ${IST})::date
+        left join (select ${day('created_at')} as day, count(*) as signups from profiles where created_at >= ${start} group by 1) pr on pr.day = (d.ts at time zone ${IST})::date
+        left join (select ${day('sent_at')} as day, count(*) as messages from messages where sent_at >= ${start} group by 1) m on m.day = (d.ts at time zone ${IST})::date
+        order by 1`),
+      run(sql<Record<string, string>>`
+        select
+          (select coalesce(sum(amount), 0) from payments where status = 'SUCCEEDED' and created_at >= ${start}) as revenue,
+          (select coalesce(sum(amount), 0) from payments where status = 'SUCCEEDED' and created_at >= ${prevStart} and created_at < ${start}) as revenue_prev,
+          (select count(*) from payments where status = 'SUCCEEDED' and amount > 0 and created_at >= ${start}) as passes,
+          (select count(*) from payments where status = 'SUCCEEDED' and amount > 0 and created_at >= ${prevStart} and created_at < ${start}) as passes_prev,
+          (select count(*) from profiles where created_at >= ${start}) as signups,
+          (select count(*) from profiles where created_at >= ${prevStart} and created_at < ${start}) as signups_prev,
+          (select count(*) from messages where sent_at >= ${start}) as messages,
+          (select count(*) from messages where sent_at >= ${prevStart} and sent_at < ${start}) as messages_prev,
+          (select count(*) from payments where amount > 0 and created_at >= ${start}) as checkouts,
+          (select count(*) from payments where amount > 0 and created_at >= ${prevStart} and created_at < ${start}) as checkouts_prev,
+          (select count(*) from contact_passes where expires_at > now()) as active_passes,
+          (select count(*) from profiles) as users`),
+      run(sql<Record<string, string>>`
+        select count(*) filter (where status = 'SUCCEEDED') as paid,
+               count(*) filter (where status = 'REFUNDED') as refunded,
+               count(*) filter (where status = 'FAILED') as failed,
+               count(*) filter (where status in ('CREATED', 'PENDING') and created_at < now() - interval '1 hour') as abandoned,
+               count(*) filter (where status in ('CREATED', 'PENDING') and created_at >= now() - interval '1 hour') as in_progress
+        from payments where amount > 0 and created_at >= ${start}`),
+      run(sql<{ method: string | null; payments: string; revenue: string }>`
+        select method, count(*) as payments, sum(amount) as revenue
+        from payments where status = 'SUCCEEDED' and amount > 0 and created_at >= ${start}
+        group by method order by count(*) desc`),
+      run(sql<Record<string, string>>`
+        select count(*) filter (where status = 'ACTIVE' and last_confirmed_at > now() - make_interval(hours => ${STALE_AFTER_HOURS})) as active,
+               count(*) filter (where status = 'ACTIVE' and last_confirmed_at <= now() - make_interval(hours => ${STALE_AFTER_HOURS}) and last_confirmed_at > now() - make_interval(hours => ${EXPIRE_AFTER_HOURS})) as stale,
+               count(*) filter (where status = 'EXPIRED' or (status = 'ACTIVE' and last_confirmed_at <= now() - make_interval(hours => ${EXPIRE_AFTER_HOURS}))) as expired,
+               count(*) filter (where status = 'OCCUPIED') as occupied
+        from listings`),
+      run(sql<{ locality: string; listings: string }>`
+        select locality, count(*) as listings from listings
+        where status = 'ACTIVE' and locality is not null and last_confirmed_at > now() - make_interval(hours => ${EXPIRE_AFTER_HOURS})
+        group by locality order by count(*) desc, locality limit 8`),
+      run(sql<Record<string, string>>`
+        select (select count(*) from reports where status = 'OPEN') as reports,
+               (select count(*) from verifications where status = 'PENDING') as verifications,
+               (select count(*) from payments where provider = 'RAZORPAY' and status in ('CREATED', 'PENDING')
+                  and created_at between now() - interval '7 days' and now() - interval '15 minutes') as stuck,
+               (select count(*) from contact_passes where expires_at between now() and now() + interval '48 hours') as expiring`),
+      run(sql<{ id: string; name: string; amount: number; status: string; created_at: Date }>`
+        select pa.id, p.display_name as name, pa.amount, pa.status, pa.created_at
+        from payments pa join profiles p on p.user_id = pa.user_id
+        where pa.amount > 0 order by pa.created_at desc limit 6`),
+      run(sql<{ id: string; name: string; created_at: Date }>`
+        select user_id as id, display_name as name, created_at from profiles order by created_at desc limit 6`),
+    ]);
+
+    const k = kpis[0]!;
+    const o = outcomes[0]!;
+    const l = listings[0]!;
+    const a = attention[0]!;
+    const delta = (cur: string | undefined, prev: string | undefined) => ({ current: Number(cur ?? 0), previous: Number(prev ?? 0) });
+    const METHODS = new Set(['UPI', 'CARD', 'NETBANKING']);
+    return {
+      days,
+      daily: daily.map((d) => ({ date: d.date, revenueInr: Number(d.revenue), paidPasses: Number(d.passes), signups: Number(d.signups), messages: Number(d.messages) })),
+      kpis: {
+        revenueInr: delta(k.revenue, k.revenue_prev),
+        paidPasses: delta(k.passes, k.passes_prev),
+        signups: delta(k.signups, k.signups_prev),
+        messages: delta(k.messages, k.messages_prev),
+        checkoutsStarted: delta(k.checkouts, k.checkouts_prev),
+        activePasses: Number(k.active_passes),
+        users: Number(k.users),
+      },
+      checkoutOutcomes: { paid: Number(o.paid), refunded: Number(o.refunded), failed: Number(o.failed), abandoned: Number(o.abandoned), inProgress: Number(o.in_progress) },
+      methods: methods.map((m) => ({ method: (m.method && METHODS.has(m.method) ? m.method : 'OTHER') as AdminOverview['methods'][number]['method'], payments: Number(m.payments), revenueInr: Number(m.revenue) })),
+      listings: { active: Number(l.active), stale: Number(l.stale), expired: Number(l.expired), occupied: Number(l.occupied) },
+      topLocalities: localities.map((r) => ({ locality: r.locality, listings: Number(r.listings) })),
+      attention: { openReports: Number(a.reports), pendingVerifications: Number(a.verifications), stuckPayments: Number(a.stuck), passesExpiring48h: Number(a.expiring) },
+      recentPayments: recentPayments.map((p) => ({ id: p.id, name: p.name || 'Unnamed', amount: p.amount, status: p.status as AdminOverview['recentPayments'][number]['status'], createdAt: new Date(p.created_at).toISOString() })),
+      recentUsers: recentUsers.map((u) => ({ id: u.id, name: u.name || 'Unnamed', createdAt: new Date(u.created_at).toISOString() })),
     };
   }
 

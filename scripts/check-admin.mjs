@@ -27,6 +27,13 @@ try {
   assert.equal(stats.status, 200);
   for (const k of ['users', 'newUsers7d', 'activePasses', 'revenueInr', 'revenue30dInr', 'messages7d']) assert.equal(typeof stats.body[k], 'number', `stats.${k}`);
 
+  for (const days of [7, 30, 90]) {
+    const o = await call(t, 'GET', `/admin/overview?days=${days}`);
+    assert.equal(o.status, 200, `overview ${days}: ${JSON.stringify(o.body)}`);
+    assert.equal(o.body.daily.length, days, `one row per day for ${days}d`);
+    assert.equal(o.body.kpis.revenueInr.current, o.body.daily.reduce((s, d) => s + d.revenueInr, 0), 'daily revenue adds up to the KPI');
+  }
+  assert.equal((await call(t, 'GET', '/admin/overview?days=12')).status, 422, 'only 7/30/90');
   for (const list of ['users', 'payments', 'passes', 'listings', 'reports', 'verifications']) {
     const r = await call(t, 'GET', `/admin/${list}?page=1`);
     assert.equal(r.status, 200, `${list}: ${JSON.stringify(r.body)}`);

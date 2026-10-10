@@ -136,6 +136,50 @@ export interface AdminStats {
 
 /* --- Admin panel (all routes require profiles.is_admin) ------------------------------------- */
 
+/** One calendar day (India time) in the overview's range. Days with no activity are present as zeros. */
+export interface AdminDay {
+  date: string;
+  revenueInr: number;
+  paidPasses: number;
+  signups: number;
+  messages: number;
+}
+
+/** A figure for the selected range next to the same-length range before it. */
+export interface AdminDelta {
+  current: number;
+  previous: number;
+}
+
+export interface AdminOverview {
+  days: number;
+  daily: AdminDay[];
+  kpis: {
+    revenueInr: AdminDelta;
+    paidPasses: AdminDelta;
+    signups: AdminDelta;
+    messages: AdminDelta;
+    /** Checkouts opened vs. paid, in range — conversion is paid / started. */
+    checkoutsStarted: AdminDelta;
+    activePasses: number;
+    users: number;
+  };
+  /** How checkouts that began in the range ended. "Abandoned" = never paid and older than an hour. */
+  checkoutOutcomes: { paid: number; refunded: number; failed: number; abandoned: number; inProgress: number };
+  methods: { method: "UPI" | "CARD" | "NETBANKING" | "OTHER"; payments: number; revenueInr: number }[];
+  listings: { active: number; stale: number; expired: number; occupied: number };
+  topLocalities: { locality: string; listings: number }[];
+  attention: {
+    openReports: number;
+    pendingVerifications: number;
+    /** Razorpay checkouts unpaid for 15 min–7 days: worth a "Check with Razorpay". */
+    stuckPayments: number;
+    passesExpiring48h: number;
+  };
+  recentPayments: { id: ID; name: string; amount: number; status: PaymentStatus; createdAt: string }[];
+  recentUsers: { id: ID; name: string; createdAt: string }[];
+}
+
 export interface AdminQuery {
   /** Free-text search: names, emails, phones, ids — whatever the list supports. */
   q?: string;
@@ -365,6 +409,7 @@ export interface ApiClient {
   };
   admin: {
     stats(): Promise<AdminStats>;
+    overview(days: 7 | 30 | 90): Promise<AdminOverview>;
     users(q: AdminQuery): Promise<AdminPage<AdminUser>>;
     setBanned(userId: ID, banned: boolean): Promise<void>;
     setAdmin(userId: ID, isAdmin: boolean): Promise<void>;
