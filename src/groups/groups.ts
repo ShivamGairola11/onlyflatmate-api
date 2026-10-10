@@ -67,7 +67,11 @@ export class GroupsService {
     return g;
   }
 
-  /** The viewer's own groups first, then newest. */
+  /** The invite code is the key to join, so only members see it. */
+  forViewer(g: FlatGroup, viewerId?: string): FlatGroup {
+    return viewerId && g.members.some((m) => m.userId === viewerId) ? g : { ...g, inviteCode: '' };
+  }
+
   /** Groups in the metro (by target areas), plus the viewer's own wherever they are; theirs first. */
   async list(viewerId?: string, city?: CityId) {
     const groups = await this.load();
@@ -75,7 +79,8 @@ export class GroupsService {
     const mine = (g: FlatGroup) => (viewerId && g.members.some((m) => m.userId === viewerId) ? 1 : 0);
     return groups
       .filter((g) => !city || mine(g) || belongsToCity(city, g.areas))
-      .sort((a, b) => mine(b) - mine(a) || +new Date(b.createdAt) - +new Date(a.createdAt));
+      .sort((a, b) => mine(b) - mine(a) || +new Date(b.createdAt) - +new Date(a.createdAt))
+      .map((g) => this.forViewer(g, viewerId));
   }
 
   private async owned(id: string, userId: string) {
@@ -226,8 +231,8 @@ export class GroupsController {
 
   @Public()
   @Get(':id')
-  get(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.groups.get(id);
+  async get(@Param('id', new ParseUUIDPipe()) id: string, @OptionalUser() user?: AuthUser) {
+    return this.groups.forViewer(await this.groups.get(id), user?.id);
   }
 
   @Put(':id')
