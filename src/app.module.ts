@@ -31,6 +31,7 @@ import { SafetyController } from './safety/safety.js';
 import { UploadsController, UploadsService } from './uploads/uploads.js';
 import { UsersController } from './users/users.controller.js';
 import { UsersService } from './users/users.service.js';
+import { VerificationsController, VerificationsService } from './verifications/verifications.js';
 
 @Controller('health')
 class HealthController {
@@ -64,6 +65,7 @@ class HealthController {
     PaymentsController,
     SafetyController,
     AdminController,
+    VerificationsController,
   ],
   providers: [
     PlacesService,
@@ -77,6 +79,7 @@ class HealthController {
     MessagingService,
     EventsService,
     AdminGuard,
+    VerificationsService,
     // Signed-in by default; routes opt out with @Public().
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

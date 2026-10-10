@@ -255,11 +255,25 @@ export interface SavedListings {
 }
 
 export interface Verifications {
+  detail: string | null;
+  document_path: string | null;
+  document_type: string | null;
   id: Generated<string>;
+  review_note: string | null;
   status: Generated<string>;
+  submitted_at: Timestamp | null;
   type: string;
   user_id: string;
   verified_at: Timestamp | null;
+}
+
+export interface WorkEmailCodes {
+  attempts: Generated<number>;
+  code_hash: string;
+  domain: string;
+  expires_at: Timestamp;
+  sent_at: Generated<Timestamp>;
+  user_id: string;
 }
 
 export interface DB {
@@ -283,4 +297,5 @@ export interface DB {
   reports: Reports;
   saved_listings: SavedListings;
   verifications: Verifications;
+  work_email_codes: WorkEmailCodes;
 }

@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import type { Profile, SearchPreference, User, UserMode, Verification } from '@/features/profiles/types';
+import type { Profile, SearchPreference, User, UserMode } from '@/features/profiles/types';
 import { notFound } from '../common/api-error.js';
 import { type Database, InjectDb } from '../db/db.module.js';
+import { toVerification } from '../verifications/verifications.js';
 
 /** Fields a user may change about themselves. Identity and verification are never on this list. */
 export type ProfilePatch = Partial<Pick<Profile, 'displayName' | 'age' | 'gender' | 'profession' | 'industry' | 'workArea' | 'workplaceId' | 'bio' | 'lifestyle' | 'languages' | 'hometown' | 'lookingFor'>>;
@@ -47,9 +48,7 @@ export class UsersService {
         languages: p.languages,
         hometown: p.hometown ?? undefined,
         lookingFor: (p.looking_for as SearchPreference | null) ?? undefined,
-        verifications: verifications.map(
-          (v): Verification => ({ id: v.id, userId: v.user_id, type: v.type as Verification['type'], status: v.status as Verification['status'], verifiedAt: iso(v.verified_at) }),
-        ),
+        verifications: verifications.map(toVerification),
       },
     };
   }

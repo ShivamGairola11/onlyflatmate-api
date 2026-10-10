@@ -23,7 +23,7 @@ import type {
 } from "@/features/listings/types";
 import type { Conversation, CreateConversationInput, Message, MessagingEvent } from "@/features/messaging/types";
 import type { ConfirmPaymentInput, ContactPass, PaymentMethod, PaymentOrder, PaymentProvider, PaymentStatus } from "@/features/payments/types";
-import type { Profile, User, UserMode, VerificationStatus, VerificationType } from "@/features/profiles/types";
+import type { IdDocumentType, Profile, User, UserMode, Verification, VerificationStatus, VerificationType } from "@/features/profiles/types";
 import type { CityId } from "@/lib/constants/places";
 import type { ListingDraft } from "@/lib/validation/listing";
 import type { GeoLocation, ID, Report, ReportReason, ReportTargetType } from "@/types/common";
@@ -278,6 +278,13 @@ export interface AdminVerification {
   type: VerificationType;
   status: VerificationStatus;
   verifiedAt?: string;
+  submittedAt?: string;
+  documentType?: IdDocumentType;
+  /** Identity: an uploaded document is waiting to be viewed. */
+  hasDocument: boolean;
+  /** Workplace: verified company domain. */
+  detail?: string;
+  reviewNote?: string;
 }
 
 export interface ApiClient {
@@ -298,6 +305,21 @@ export interface ApiClient {
     devSignIn(persona: DemoPersona): Promise<Session>;
     signOut(): Promise<void>;
     setMode(mode: UserMode): Promise<Session>;
+    /** Signed in already (e.g. with Google): add a mobile number; a code is sent by SMS. */
+    startPhoneVerification(phone: string): Promise<OtpChallenge>;
+    /** Confirms the code; the phone is then verified on the profile. */
+    confirmPhoneVerification(challengeId: string, code: string): Promise<void>;
+    /** Signed in by phone: add an email; a confirmation link is sent, and opening it verifies it. */
+    addEmail(email: string, returnTo: string): Promise<void>;
+  };
+  verification: {
+    /** Private upload slot for an ID photo or PDF (never public; deleted once reviewed). */
+    identityUpload(contentType: string, sizeBytes: number): Promise<{ path: string; uploadUrl: string; headers: Record<string, string> }>;
+    putIdentityFile(slot: { uploadUrl: string; headers: Record<string, string> }, file: File): Promise<void>;
+    submitIdentity(path: string, documentType: IdDocumentType): Promise<Verification>;
+    /** Emails a 6-digit code to a work address (company domains only). */
+    sendWorkCode(email: string): Promise<{ domain: string; expiresAt: string }>;
+    confirmWorkCode(code: string): Promise<Verification>;
   };
   locations: {
     /** Known localities and landmarks; the given city's come first. */
@@ -430,6 +452,9 @@ export interface ApiClient {
     reports(q: AdminQuery): Promise<AdminPage<AdminReport>>;
     setReportStatus(reportId: ID, status: AdminReportStatus): Promise<void>;
     verifications(q: AdminQuery): Promise<AdminPage<AdminVerification>>;
-    setVerificationStatus(verificationId: ID, status: Exclude<VerificationStatus, "PENDING">): Promise<void>;
+    /** Rejections can carry a note the user sees. Deciding an identity check deletes its document. */
+    setVerificationStatus(verificationId: ID, status: Exclude<VerificationStatus, "PENDING">, note?: string): Promise<void>;
+    /** Short-lived link to view a submitted ID. */
+    verificationDocument(verificationId: ID): Promise<{ url: string; contentType: string }>;
   };
 }

@@ -37,6 +37,7 @@ import {
   STALE_AFTER_HOURS,
 } from '../listings/listing.mapper.js';
 import { grantPass, RZP_METHOD, razorpay } from '../payments/payments.js';
+import { ID_BUCKET } from '../verifications/verifications.js';
 
 const PAGE_SIZE = 25;
 const DAY_MS = 86_400_000;
@@ -112,6 +113,7 @@ export class AdminController {
     config.SUPABASE_SERVICE_ROLE_KEY,
     { auth: { persistSession: false } },
   );
+  private readonly idDocs = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }).storage.from(ID_BUCKET);
 
   constructor(@InjectDb() private readonly db: Database) {}
 
@@ -950,6 +952,11 @@ export class AdminController {
         'v.type',
         'v.status',
         'v.verified_at',
+        'v.document_type',
+        'v.document_path',
+        'v.detail',
+        'v.submitted_at',
+        'v.review_note',
         'p.user_id',
         'p.display_name',
         'u.email',
@@ -967,6 +974,9 @@ export class AdminController {
       )
       .$if(!!status, (qb) => qb.where('v.status', '=', status!))
       .orderBy('v.status', 'asc')
+      // Submissions waiting with a document first, newest first.
+      .orderBy(sql`v.document_path is null`)
+      .orderBy('v.submitted_at', (ob) => ob.desc().nullsLast())
       .orderBy('v.id')
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE)
@@ -977,8 +987,24 @@ export class AdminController {
       type: r.type as AdminVerification['type'],
       status: r.status as AdminVerification['status'],
       verifiedAt: iso(r.verified_at),
+      submittedAt: iso(r.submitted_at),
+      documentType: (r.document_type ?? undefined) as AdminVerification['documentType'],
+      hasDocument: !!r.document_path,
+      detail: r.detail ?? undefined,
+      reviewNote: r.review_note ?? undefined,
     }));
     return pageOf(items, totalOf(rows), page);
+  }
+
+  /** A 2-minute link to view a submitted ID. Logged: every view of someone's ID is on record. */
+  @Get('verifications/:id/document')
+  async verificationDocument(@CurrentUser() me: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    const v = await this.db.selectFrom('verifications').select(['document_path']).where('id', '=', id).executeTakeFirst();
+    if (!v?.document_path) throw notFound('No document is waiting for this verification.');
+    const { data, error } = await this.idDocs.createSignedUrl(v.document_path, 120);
+    if (error || !data) throw new ApiError('UNKNOWN', 'Couldn’t open the document.', 502);
+    this.log.log(`${me.id} viewed ID document for verification ${id}`);
+    return { url: data.signedUrl, contentType: v.document_path.endsWith('.pdf') ? 'application/pdf' : 'image' };
   }
 
   @Post('verifications/:id/status')
@@ -988,15 +1014,18 @@ export class AdminController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: unknown,
   ) {
-    const { status } = z
-      .object({ status: z.enum(['VERIFIED', 'REJECTED']) })
+    const { status, note } = z
+      .object({ status: z.enum(['VERIFIED', 'REJECTED']), note: z.string().trim().max(200).optional() })
       .parse(body);
-    const r = await this.db
+    const v = await this.db.selectFrom('verifications').select(['document_path']).where('id', '=', id).executeTakeFirst();
+    if (!v) throw notFound('Verification not found');
+    // Decided: the ID document has done its job, so it's deleted — only the outcome is kept.
+    if (v.document_path) await this.idDocs.remove([v.document_path]);
+    await this.db
       .updateTable('verifications')
-      .set({ status, verified_at: status === 'VERIFIED' ? new Date() : null })
+      .set({ status, verified_at: status === 'VERIFIED' ? new Date() : null, document_path: null, review_note: status === 'REJECTED' ? (note ?? null) : null })
       .where('id', '=', id)
-      .executeTakeFirst();
-    if (!r.numUpdatedRows) throw notFound('Verification not found');
+      .execute();
     this.log.log(`${me.id} set verification ${id} → ${status}`);
   }
 }

@@ -12,12 +12,22 @@ import type {
 export type VerificationType = "PHONE" | "EMAIL" | "IDENTITY" | "WORKPLACE";
 export type VerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
 
+/** Government IDs accepted for identity verification. */
+export type IdDocumentType = "AADHAAR" | "PAN" | "DRIVING_LICENCE" | "PASSPORT" | "VOTER_ID";
+
 export interface Verification {
   id: ID;
   userId: ID;
   type: VerificationType;
   status: VerificationStatus;
   verifiedAt?: ISODateString;
+  /** Identity: which ID was submitted. */
+  documentType?: IdDocumentType;
+  /** Workplace: the verified company domain, e.g. "infosys.com". */
+  detail?: string;
+  submittedAt?: ISODateString;
+  /** Why a submission was rejected, shown to the user. */
+  reviewNote?: string;
 }
 
 export type UserMode = "SEEKING" | "OFFERING";

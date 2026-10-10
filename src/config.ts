@@ -34,6 +34,10 @@ const schema = z.object({
    * dev runs without one (webhooks can't reach localhost); set it in production or the webhook answers 503.
    */
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  /** Resend (resend.com) API key for transactional email: work-email verification codes. */
+  RESEND_API_KEY: z.string().optional(),
+  /** Sender for those emails; the domain must be verified in Resend. */
+  EMAIL_FROM: z.string().default('FindFlatmates <verify@findflatmates.in>'),
 }).refine((c) => c.PAYMENTS_PROVIDER !== 'razorpay' || (c.RAZORPAY_KEY_ID && c.RAZORPAY_KEY_SECRET), {
   message: 'RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required when PAYMENTS_PROVIDER=razorpay',
 });
