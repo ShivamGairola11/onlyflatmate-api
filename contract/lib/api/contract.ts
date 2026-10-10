@@ -139,6 +139,9 @@ export interface ApiClient {
     verifyOtp(challengeId: string, code: string): Promise<Session>;
     /** Where to send the browser to start Google sign-in. The BFF handles the callback, sets the cookie and redirects to `returnTo`. */
     googleSignInUrl(returnTo: string): Promise<{ url: string }>;
+    /** Creates an account; a confirmation link is emailed, and the account can't sign in until it's opened. */
+    signUpWithEmail(email: string, password: string, returnTo: string): Promise<void>;
+    signInWithEmail(email: string, password: string): Promise<Session>;
     /** Development and demo builds only: sign in as a seeded persona. Production returns 404. */
     devSignIn(persona: DemoPersona): Promise<Session>;
     signOut(): Promise<void>;

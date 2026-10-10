@@ -33,11 +33,15 @@ export interface PaymentOrder {
   providerOrderId: string;
   amount: Rupees;
   currency: "INR";
+  /** Razorpay key id (public). Present only when the backend charges through Razorpay. */
+  keyId?: string;
 }
 
 export interface ConfirmPaymentInput {
   paymentId: ID;
   method: PaymentMethod;
+  /** Razorpay's payment id (`razorpay_payment_id`). */
+  providerPaymentId?: string;
   /** Provider signature — verified server-side, never trusted from the client. */
   providerSignature?: string;
 }

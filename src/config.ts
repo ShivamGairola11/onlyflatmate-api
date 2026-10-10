@@ -26,6 +26,16 @@ const schema = z.object({
   ROUTER_TIMEOUT_MS: z.coerce.number().default(4000),
   /** Contact Pass checkout. "mock" accepts any payment (dev only); "razorpay" verifies signatures. */
   PAYMENTS_PROVIDER: z.enum(['mock', 'razorpay']).default('mock'),
+  /** Razorpay API keys. The key id is public (Checkout needs it); the secret never leaves the server. */
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  /**
+   * The secret set on the webhook in the Razorpay dashboard (not the API key secret). Optional so local
+   * dev runs without one (webhooks can't reach localhost); set it in production or the webhook answers 503.
+   */
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+}).refine((c) => c.PAYMENTS_PROVIDER !== 'razorpay' || (c.RAZORPAY_KEY_ID && c.RAZORPAY_KEY_SECRET), {
+  message: 'RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required when PAYMENTS_PROVIDER=razorpay',
 });
 
 export type Config = z.infer<typeof schema>;

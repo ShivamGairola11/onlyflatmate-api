@@ -1,7 +1,7 @@
 // Synced from the web app (src/features/auth/types/index.ts) by scripts/sync-contract.mjs — do not edit here.
 import type { Profile, User } from "@/features/profiles/types";
 
-export type AuthMethod = "GOOGLE" | "PHONE";
+export type AuthMethod = "GOOGLE" | "PHONE" | "EMAIL";
 
 export type DemoPersona = "SEEKER" | "LISTER" | "FLATMATE_SEEKER" | "GROUP_CREATOR";
 
