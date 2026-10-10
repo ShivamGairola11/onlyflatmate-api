@@ -175,6 +175,8 @@ export interface ListingSearchParams {
   bhk?: BHK[];
   furnishing?: Furnishing[];
   buildingTypes?: BuildingType[];
+  /** Listings must have every one of these. */
+  amenities?: Amenity[];
   gender?: GenderPreference;
   moveIn?: MoveInWindow;
   moveInDate?: ISODateString;

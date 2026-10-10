@@ -81,7 +81,7 @@ export const AMENITY_LABEL: Record<Amenity, string> = {
   WASHING_MACHINE: "Washing machine",
   FRIDGE: "Fridge",
   POWER_BACKUP: "Power backup",
-  PARKING: "Parking",
+  PARKING: "Car parking",
   LIFT: "Lift",
   GYM: "Gym",
   SECURITY: "24×7 security",

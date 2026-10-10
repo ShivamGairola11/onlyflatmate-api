@@ -61,6 +61,7 @@ export class ListingsService {
       if (p.bhk?.length) and.push(eb('l.bhk', 'in', p.bhk));
       if (p.furnishing?.length) and.push(eb('l.furnishing', 'in', p.furnishing));
       if (p.buildingTypes?.length) and.push(eb('l.building_type', 'in', p.buildingTypes));
+      if (p.amenities?.length) and.push(sql<SqlBool>`l.amenities @> ${sql.val(p.amenities)}::text[]`);
       if (p.gender && p.gender !== 'ANY') and.push(eb('l.pref_gender', 'in', ['ANY', p.gender]));
       if (cutoff) and.push(eb('l.available_from', '<=', cutoff as never));
       if (p.bounds) {

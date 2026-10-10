@@ -21,6 +21,7 @@ const searchQuery = z
     bhk: queryList(z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS'])),
     furnishing: queryList(z.enum(['FURNISHED', 'SEMI_FURNISHED', 'UNFURNISHED'])),
     buildingTypes: queryList(z.enum(['GATED_SOCIETY', 'BUILDER_FLOOR', 'DDA_FLAT', 'INDEPENDENT_HOUSE', 'STANDALONE_APARTMENT', 'OTHER'])),
+    amenities: queryList(z.string().regex(/^[A-Z_]{2,30}$/)),
     gender: z.enum(['MALE', 'FEMALE', 'ANY']).optional(),
     moveIn: z.enum(['IMMEDIATE', '15_DAYS', '30_DAYS', 'CUSTOM']).optional(),
     moveInDate: z.string().optional(),
