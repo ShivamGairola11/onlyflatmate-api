@@ -41,6 +41,10 @@ export interface User {
   /** Which side of the marketplace the UI should emphasise. Not a separate account. */
   mode: UserMode;
   isAdmin?: boolean;
+  /** Profile photo (uploaded, or the sign-in provider's). Absent → initials. */
+  avatarUrl?: string;
+  /** The photo the sign-in provider (Google) has, offered as "Use Google photo". */
+  providerAvatarUrl?: string;
 }
 
 export interface Profile {

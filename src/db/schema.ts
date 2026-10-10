@@ -218,6 +218,7 @@ export interface Photos {
 
 export interface Profiles {
   age: number | null;
+  avatar_url: string | null;
   bio: string | null;
   created_at: Generated<Timestamp>;
   display_name: Generated<string>;

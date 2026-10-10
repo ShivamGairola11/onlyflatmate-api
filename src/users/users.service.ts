@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import type { Profile, SearchPreference, User, UserMode } from '@/features/profiles/types';
 import { notFound } from '../common/api-error.js';
 import { type Database, InjectDb } from '../db/db.module.js';
@@ -19,6 +20,7 @@ export class UsersService {
       .innerJoin('auth.users as u', 'u.id', 'p.user_id')
       .selectAll('p')
       .select(['u.phone', 'u.email'])
+      .select(sql<string | null>`public.provider_avatar(u.raw_user_meta_data)`.as('provider_avatar'))
       .where('p.user_id', '=', userId)
       .executeTakeFirst();
     if (!p) throw notFound('Profile not found');
@@ -33,6 +35,8 @@ export class UsersService {
         createdAt: iso(p.created_at)!,
         mode: p.mode as UserMode,
         isAdmin: p.is_admin || undefined,
+        avatarUrl: p.avatar_url ?? undefined,
+        providerAvatarUrl: p.provider_avatar ?? undefined,
       },
       profile: {
         userId: p.user_id,

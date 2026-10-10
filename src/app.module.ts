@@ -30,6 +30,7 @@ import { PlacesService } from './places/places.service.js';
 import { SafetyController } from './safety/safety.js';
 import { UploadsController, UploadsService } from './uploads/uploads.js';
 import { UsersController } from './users/users.controller.js';
+import { AvatarController, AvatarService } from './users/avatar.js';
 import { UsersService } from './users/users.service.js';
 import { VerificationsController, VerificationsService } from './verifications/verifications.js';
 
@@ -66,6 +67,7 @@ class HealthController {
     SafetyController,
     AdminController,
     VerificationsController,
+    AvatarController,
   ],
   providers: [
     PlacesService,
@@ -80,6 +82,7 @@ class HealthController {
     EventsService,
     AdminGuard,
     VerificationsService,
+    AvatarService,
     // Signed-in by default; routes opt out with @Public().
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

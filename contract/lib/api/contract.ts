@@ -426,6 +426,14 @@ export interface ApiClient {
   };
   profiles: {
     me(): Promise<{ user: User; profile: Profile }>;
+    /** Private staging slot for a new photo; the API validates and re-encodes it in `setAvatar`. */
+    avatarUpload(contentType: string, sizeBytes: number): Promise<{ path: string; uploadUrl: string; headers: Record<string, string> }>;
+    putAvatarFile(slot: { uploadUrl: string; headers: Record<string, string> }, file: File): Promise<void>;
+    /** Validates the uploaded image, publishes a clean 512px copy and returns its URL. */
+    setAvatar(path: string): Promise<{ avatarUrl: string }>;
+    /** Switch back to the sign-in provider's photo. */
+    useProviderAvatar(): Promise<{ avatarUrl: string }>;
+    removeAvatar(): Promise<void>;
     update(patch: Partial<Profile>): Promise<Profile>;
   };
   safety: {
