@@ -72,6 +72,7 @@ export class ListingEditorService {
       deposit: input.pricing.deposit,
       brokerage: input.pricing.brokerage,
       electricity_included: input.pricing.electricityIncluded,
+      extras: JSON.stringify(input.pricing.extras ?? []),
       flatmates: JSON.stringify(input.flatmates),
       pref_gender: input.preference.gender,
       pref_age_min: input.preference.ageMin ?? null,

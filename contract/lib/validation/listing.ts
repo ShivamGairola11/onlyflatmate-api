@@ -7,9 +7,9 @@ import { AMENITY_OPTIONS, BHK_OPTIONS, BUILDING_TYPE_OPTIONS, FURNISHING_OPTIONS
 
 type Tuple<T extends string> = [T, ...T[]];
 
-const listingType = z.enum(LISTING_TYPES as Tuple<ListingType>);
-const bhk = z.enum(BHK_OPTIONS as Tuple<BHK>);
-const furnishing = z.enum(FURNISHING_OPTIONS as Tuple<Furnishing>);
+const listingType = z.enum(LISTING_TYPES as Tuple<ListingType>, { error: "Pick what you’re offering" });
+const bhk = z.enum(BHK_OPTIONS as Tuple<BHK>, { error: "Pick the size of the home" });
+const furnishing = z.enum(FURNISHING_OPTIONS as Tuple<Furnishing>, { error: "Say how furnished it is" });
 const buildingType = z.enum(BUILDING_TYPE_OPTIONS as Tuple<BuildingType>, { error: "Choose the type of building" });
 const amenity = z.enum(AMENITY_OPTIONS as Tuple<Amenity>);
 const lifestyle = z.enum(LIFESTYLE_OPTIONS as Tuple<LifestyleTag>);
@@ -43,7 +43,7 @@ export const listingDraftSchema = z
     bhk,
     buildingType,
     buildingTypeOther: z.string().trim().max(60, "Keep it under 60 characters").optional(),
-    bathrooms: z.number().int().min(1).max(6),
+    bathrooms: z.number({ error: "Pick the number of bathrooms" }).int().min(1, "Pick the number of bathrooms").max(6),
     furnishing,
     amenities: z.array(amenity),
     rent: z.number({ error: "Enter the monthly rent" }).int().min(2000, "Rent looks too low").max(300000, "Rent looks too high"),
@@ -51,6 +51,15 @@ export const listingDraftSchema = z
     maintenance: z.number({ error: "Enter maintenance (0 if none)" }).int().min(0).max(50000),
     /** Lister is a broker, or brokerage is charged on this place. Shown on every card when true. */
     hasBrokerage: z.boolean().optional(),
+    extras: z
+      .array(
+        z.object({
+          label: z.string().trim().min(2, "Name the charge, e.g. Wi-Fi").max(40, "Keep it under 40 characters"),
+          amount: z.number({ error: "Enter the amount" }).int().min(1, "Enter the amount").max(200000, "That looks too high"),
+          frequency: z.enum(["MONTHLY", "ONE_TIME"]),
+        }),
+      )
+      .max(10),
     brokerage: z.number().int().min(0).max(1000000).optional(),
     residents: z.array(residentSchema).max(6),
     preferenceGender: z.enum(["MALE", "FEMALE", "ANY"]),

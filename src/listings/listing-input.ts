@@ -39,6 +39,10 @@ export const listingInput = z
       deposit: z.number().int().min(0).max(1000000),
       brokerage: z.number().int().min(0).max(1000000),
       electricityIncluded: z.boolean(),
+      extras: z
+        .array(z.object({ label: z.string().trim().min(2).max(40), amount: z.number().int().min(1).max(200000), frequency: z.enum(['MONTHLY', 'ONE_TIME']) }))
+        .max(10)
+        .default([]),
     }),
     flatmates: z.array(z.object({ name: z.string().trim().min(1).max(40), age: z.number().int().min(18).max(80), gender: z.enum(['MALE', 'FEMALE', 'OTHER']), profession: z.string().trim().max(60), lifestyle })).max(6),
     preference: z.object({

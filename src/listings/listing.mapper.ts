@@ -43,7 +43,7 @@ export function toListing(r: ListingRow, photos: ListingPhoto[]): Listing {
       amenities: r.amenities as Listing['property']['amenities'],
     },
     room: (r.room as Room | null) ?? undefined,
-    pricing: { rent: r.rent, maintenance: r.maintenance, deposit: r.deposit, brokerage: r.brokerage, electricityIncluded: r.electricity_included },
+    pricing: { rent: r.rent, maintenance: r.maintenance, deposit: r.deposit, brokerage: r.brokerage, electricityIncluded: r.electricity_included, extras: (Array.isArray(r.extras) ? r.extras : []) as unknown as Listing['pricing']['extras'] },
     flatmates: ((r.flatmates as Omit<Flatmate, 'id'>[] | null) ?? []).map((f, i) => ({ ...f, id: `${r.id}_fm${i}` })),
     preference: {
       gender: r.pref_gender as Listing['preference']['gender'],

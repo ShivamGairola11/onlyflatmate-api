@@ -87,6 +87,15 @@ export interface FlatmatePreference {
   lifestyle: LifestyleTag[];
 }
 
+export type ExtraChargeFrequency = "MONTHLY" | "ONE_TIME";
+
+/** Anything charged on top of rent and maintenance: Wi-Fi, rented furniture, cook, a one-time cleaning fee… */
+export interface ExtraCharge {
+  label: string;
+  amount: Rupees;
+  frequency: ExtraChargeFrequency;
+}
+
 export interface ListingPricing {
   rent: Rupees;
   maintenance: Rupees;
@@ -94,6 +103,8 @@ export interface ListingPricing {
   /** Brokerage is always zero on-platform, but imported listings may carry one. */
   brokerage: Rupees;
   electricityIncluded: boolean;
+  /** Up to 10. Older listings and clients may omit it. */
+  extras?: ExtraCharge[];
 }
 
 export interface ListingPhoto {

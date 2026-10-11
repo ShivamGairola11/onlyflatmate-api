@@ -146,6 +146,7 @@ export interface Listings {
   deposit: Generated<number>;
   description: Generated<string>;
   electricity_included: Generated<boolean>;
+  extras: Generated<Json>;
   flatmates: Generated<Json>;
   floor: number | null;
   furnishing: string;
