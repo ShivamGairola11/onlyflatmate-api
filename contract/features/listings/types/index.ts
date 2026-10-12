@@ -85,6 +85,8 @@ export interface FlatmatePreference {
   ageMax?: number;
   occupation: "WORKING" | "STUDENT" | "ANY";
   lifestyle: LifestyleTag[];
+  /** The lister's own words about who'd fit in. */
+  note?: string;
 }
 
 export type ExtraChargeFrequency = "MONTHLY" | "ONE_TIME";

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { FlatGroup, GroupMatch, GroupMember, MatchCriterion } from '@/features/groups/types';
 import { forbidden, invalid, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth.js';
+import { assertNoContactInfo } from '../common/contact-info.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { ListingsService } from '../listings/listings.service.js';
 
@@ -93,6 +94,7 @@ export class GroupsService {
   }
 
   async create(userId: string, input: z.infer<typeof createInput>) {
+    assertNoContactInfo(input.name, input.note);
     const me = await this.me(userId);
     const id = await this.db.transaction().execute(async (trx) => {
       const g = await trx
@@ -107,6 +109,7 @@ export class GroupsService {
   }
 
   async update(id: string, userId: string, input: z.infer<typeof updateInput>) {
+    assertNoContactInfo(input.name, input.note);
     const g = await this.owned(id, userId);
     if (input.peopleNeeded < g.members.length) throw invalid(`The group already has ${g.members.length} people.`);
     await this.db
@@ -124,6 +127,7 @@ export class GroupsService {
 
   /** Members add people who've already agreed (they appear as INVITED until they join). */
   async addMember(id: string, userId: string, input: z.infer<typeof memberInput>) {
+    assertNoContactInfo(input.name, input.profession);
     const g = await this.get(id);
     if (!g.members.some((m) => m.userId === userId)) throw forbidden('Only members can invite people.');
     if (g.members.length >= g.peopleNeeded) throw invalid('This group is already full.');

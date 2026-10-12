@@ -51,6 +51,7 @@ export function toListing(r: ListingRow, photos: ListingPhoto[]): Listing {
       ageMax: r.pref_age_max ?? undefined,
       occupation: r.pref_occupation as Listing['preference']['occupation'],
       lifestyle: r.pref_lifestyle as Listing['preference']['lifestyle'],
+      note: r.pref_note ?? undefined,
     },
     availableFrom: new Date(`${r.available_from}T00:00:00.000Z`).toISOString(),
     photos,

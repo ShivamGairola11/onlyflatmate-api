@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { FlatmateProfile, FlatmateSearchParams } from '@/features/flatmates/types';
 import { invalid, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth.js';
+import { assertNoContactInfo } from '../common/contact-info.js';
 import { queryBool, queryList, queryNumber } from '../common/zod.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 
@@ -174,6 +175,7 @@ export class FlatmatesController {
   save(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const parsed = flatmateInput.safeParse(body);
     if (!parsed.success) throw invalid(parsed.error.issues[0]?.message ?? 'Check your flatmate profile.');
+    assertNoContactInfo(parsed.data.bio, parsed.data.workArea);
     return this.flatmates.saveMine(user.id, parsed.data);
   }
 

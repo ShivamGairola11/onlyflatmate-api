@@ -51,6 +51,7 @@ export const listingInput = z
       ageMax: z.number().int().min(18).max(80).optional(),
       occupation: z.enum(['WORKING', 'STUDENT', 'ANY']),
       lifestyle,
+      note: z.string().trim().max(300).optional(),
     }),
     availableFrom: z.iso.datetime().or(z.iso.date()),
     photos: z.array(z.url()).max(8),
@@ -61,3 +62,13 @@ export const listingInput = z
   .refine((d) => d.property.buildingType !== 'OTHER' || (d.property.buildingTypeOther?.length ?? 0) >= 2, { path: ['property', 'buildingTypeOther'], message: 'Describe the building' });
 
 export type ListingInput = z.infer<typeof listingInput>;
+
+/** Every free-text field a listing shows to others. */
+export const listingTexts = (i: ListingInput) => [
+  i.title,
+  i.description,
+  i.property.buildingTypeOther,
+  i.preference.note,
+  ...i.pricing.extras.map((x) => x.label),
+  ...i.flatmates.flatMap((f) => [f.name, f.profession]),
+];

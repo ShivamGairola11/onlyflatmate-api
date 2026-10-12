@@ -12,7 +12,8 @@ import { dirname, join, posix, relative, resolve } from 'node:path';
 const webRoot = resolve(process.argv[2] ?? '../basera');
 const src = join(webRoot, 'src');
 const out = resolve('contract');
-const ENTRIES = ['lib/api/contract.ts', 'lib/api/errors.ts'];
+// contact-info: the phone/email detector the API enforces on user-written text.
+const ENTRIES = ['lib/api/contract.ts', 'lib/api/errors.ts', 'lib/validation/contact-info.ts'];
 
 if (!existsSync(join(src, ENTRIES[0]))) {
   console.error(`No contract at ${join(src, ENTRIES[0])}. Pass the web app's folder: npm run contract:sync -- <path>`);

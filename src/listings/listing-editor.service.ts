@@ -79,6 +79,7 @@ export class ListingEditorService {
       pref_age_max: input.preference.ageMax ?? null,
       pref_occupation: input.preference.occupation,
       pref_lifestyle: input.preference.lifestyle,
+      pref_note: input.preference.note || null,
       available_from: input.availableFrom.slice(0, 10),
     };
   }

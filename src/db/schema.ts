@@ -160,6 +160,7 @@ export interface Listings {
   pref_age_min: number | null;
   pref_gender: Generated<string>;
   pref_lifestyle: Generated<string[]>;
+  pref_note: string | null;
   pref_occupation: Generated<string>;
   public_point: string;
   rent: number;

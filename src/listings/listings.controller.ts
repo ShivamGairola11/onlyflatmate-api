@@ -3,10 +3,18 @@ import { z } from 'zod';
 import type { ListingSearchParams } from '@/features/listings/types';
 import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth.js';
 import { ApiError } from '../common/api-error.js';
+import { assertNoContactInfo } from '../common/contact-info.js';
 import { queryBool, queryList, queryNumber } from '../common/zod.js';
 import { ListingEditorService } from './listing-editor.service.js';
-import { listingInput } from './listing-input.js';
+import { listingInput, listingTexts } from './listing-input.js';
 import { ListingsService } from './listings.service.js';
+
+/** Parse a listing body and refuse contact details in any of its text. */
+const checkedListing = (body: unknown) => {
+  const input = listingInput.parse(body);
+  assertNoContactInfo(...listingTexts(input));
+  return input;
+};
 
 const searchQuery = z
   .object({
@@ -77,7 +85,7 @@ export class ListingsController {
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.editor.create(user.id, listingInput.parse(body));
+    return this.editor.create(user.id, checkedListing(body));
   }
 
   /** Paste a social-media post; get a draft back. Signed in, to keep scrapers off it. */
@@ -93,7 +101,7 @@ export class ListingsController {
 
   @Put(':id')
   update(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: unknown) {
-    return this.editor.update(id, user.id, listingInput.parse(body));
+    return this.editor.update(id, user.id, checkedListing(body));
   }
 
   @Delete(':id')

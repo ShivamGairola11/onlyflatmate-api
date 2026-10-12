@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Conversation, ConversationContext, ConversationParticipant, Message } from '@/features/messaging/types';
 import { ApiError, forbidden, invalid, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
+import { assertNoContactInfo } from '../common/contact-info.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { ListingsService } from '../listings/listings.service.js';
 import { EventsService } from './events.js';
@@ -116,6 +117,8 @@ export class MessagingService {
   }
 
   async create(userId: string, input: z.infer<typeof createInput>) {
+    // Before the conversation exists, so a refused first message doesn't leave an empty thread.
+    assertNoContactInfo(input.initialMessage);
     const { context, counterpartId } = await this.context(input.contextType, input.contextId);
     if (counterpartId === userId) throw invalid('You can’t message yourself.');
     if (await this.blockedBetween(userId, counterpartId)) throw new ApiError('BLOCKED', 'You can’t contact this person.', 403);
@@ -153,6 +156,7 @@ export class MessagingService {
     if (other && (await this.blockedBetween(userId, other))) throw new ApiError('BLOCKED', 'You can’t message this person.', 403);
     const text = body.trim();
     if (!text) throw invalid('Message can’t be empty.');
+    assertNoContactInfo(text);
     const m = await this.db.insertInto('messages').values({ conversation_id: id, sender_id: userId, body: text }).returningAll().executeTakeFirstOrThrow();
     await this.db.updateTable('conversations').set({ updated_at: m.sent_at }).where('id', '=', id).execute();
     const message = toMessage(m);

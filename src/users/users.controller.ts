@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Patch } from '@nestjs/common';
 import { z } from 'zod';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
+import { assertNoContactInfo } from '../common/contact-info.js';
 import { type ProfilePatch, UsersService } from './users.service.js';
 
 const lifestyle = z.array(z.string().max(30)).max(14);
@@ -41,7 +42,9 @@ export class UsersController {
 
   @Patch('profile')
   update(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.users.updateProfile(user.id, profilePatch.parse(body) as ProfilePatch);
+    const patch = profilePatch.parse(body);
+    assertNoContactInfo(patch.displayName, patch.profession, patch.industry, patch.workArea, patch.bio, patch.hometown);
+    return this.users.updateProfile(user.id, patch as ProfilePatch);
   }
 
   @Patch('mode')
