@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Body, Controller, Injectable, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Injectable, Logger, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import type { PhotoUploadTicket, UploadedPhoto } from '@/lib/api/contract';
@@ -20,6 +20,7 @@ const TICKET_TTL_MS = 2 * 60 * 60_000;
  */
 @Injectable()
 export class UploadsService {
+  private readonly log = new Logger('Uploads');
   private readonly storage = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }).storage.from(BUCKET);
 
   constructor(@InjectDb() private readonly db: Database) {}
@@ -28,7 +29,10 @@ export class UploadsService {
     const photoId = randomUUID();
     const path = `${userId}/${photoId}.${EXT[contentType]}`;
     const { data, error } = await this.storage.createSignedUploadUrl(path);
-    if (error || !data) throw new ApiError('UNKNOWN', 'Photo uploads are unavailable right now.', 503);
+    if (error || !data) {
+      this.log.error(`Signed upload URL failed for ${BUCKET}/${path}: ${error?.message ?? 'no data'}`);
+      throw new ApiError('UNKNOWN', 'Photo uploads are unavailable right now.', 503);
+    }
     await this.db
       .insertInto('photos')
       .values({ id: photoId, owner_id: userId, storage_path: path, url: this.storage.getPublicUrl(path).data.publicUrl, content_type: contentType, size_bytes: sizeBytes })
