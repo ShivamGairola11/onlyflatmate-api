@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { LocationSuggestion } from '@/lib/api/contract';
 import { type CityId, cityOfRegion, type Region } from '@/lib/constants/places';
 import type { GeoLocation } from '@/types/common';
-import { distanceKm, latOf, lngOf } from '../common/geo.js';
+import { sql } from 'kysely';
+import { latOf, lngOf, pointSql } from '../common/geo.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 
 export interface Locality extends GeoLocation {
@@ -74,9 +75,22 @@ export class PlacesService {
     return (await this.load()).localities;
   }
 
-  async nearestLocality(point: GeoLocation): Promise<Locality> {
+  /** Each point's nearest locality (KNN on the GiST index) and its straight-line km to `to`, in one query. */
+  async nearest(points: { id: string; location: GeoLocation }[], to: GeoLocation): Promise<Map<string, { locality: Locality; km: number }>> {
+    if (!points.length) return new Map();
+    const values = sql.join(points.map((p) => sql`(${p.id}::text, ${p.location.longitude}::float8, ${p.location.latitude}::float8)`));
+    const { rows } = await sql<{ id: string; slug: string; km: number }>`
+      select o.id, n.slug, extensions.st_distance(o.pt, ${pointSql(to)}) / 1000 as km
+      from (select v.id, extensions.st_setsrid(extensions.st_makepoint(v.lng, v.lat), 4326)::extensions.geography as pt from (values ${values}) as v(id, lng, lat)) o
+      cross join lateral (select l.slug from public.localities l order by l.point operator(extensions.<->) o.pt limit 1) n
+    `.execute(this.db);
     const { localities } = await this.load();
-    return localities.reduce((best, l) => (distanceKm(point, l) < distanceKm(point, best) ? l : best));
+    const bySlug = new Map(localities.map((l) => [l.slug, l]));
+    return new Map(rows.map((r) => [r.id, { locality: bySlug.get(r.slug)!, km: Number(r.km) }]));
+  }
+
+  async nearestLocality(point: GeoLocation): Promise<Locality> {
+    return (await this.nearest([{ id: '', location: point }], point)).get('')!.locality;
   }
 
   async resolveDestination(id: string | undefined): Promise<Destination | undefined> {

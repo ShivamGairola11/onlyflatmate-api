@@ -5,7 +5,7 @@ import type { EditableListing, Listing, ListingDraftRecord } from '@/features/li
 import type { ImportedListing } from '@/lib/api/contract';
 import type { ListingDraft } from '@/lib/validation/listing';
 import { forbidden, invalid, notFound } from '../common/api-error.js';
-import { approximateLocation, latOf, lngOf, pointSql } from '../common/geo.js';
+import { fuzzedPointSql, latOf, lngOf, pointSql } from '../common/geo.js';
 import { type AppDB, type Database, InjectDb } from '../db/db.module.js';
 import { PlacesService } from '../places/places.service.js';
 import { parseListingText } from './listing-import.js';
@@ -91,12 +91,11 @@ export class ListingEditorService {
 
   async create(userId: string, input: ListingInput): Promise<Listing> {
     const id = randomUUID();
-    const publicPoint = approximateLocation(input.exactLocation, PRIVACY_RADIUS_M, id);
     const cols = await this.columns(input);
     await this.db.transaction().execute(async (trx) => {
       await trx
         .insertInto('listings')
-        .values({ id, lister_id: userId, source: input.source ?? 'PLATFORM', public_point: pointSql(publicPoint), location_precision_m: PRIVACY_RADIUS_M, ...cols })
+        .values({ id, lister_id: userId, source: input.source ?? 'PLATFORM', public_point: fuzzedPointSql(input.exactLocation, PRIVACY_RADIUS_M, id), location_precision_m: PRIVACY_RADIUS_M, ...cols })
         .execute();
       await trx.insertInto('listing_private_locations').values({ listing_id: id, exact_point: pointSql(input.exactLocation), address_line: input.addressLine }).execute();
       await this.setPhotos(trx, id, userId, input.photos);
@@ -126,7 +125,7 @@ export class ListingEditorService {
     await this.db.transaction().execute(async (trx) => {
       await trx
         .updateTable('listings')
-        .set({ ...cols, ...(moved && { public_point: pointSql(approximateLocation(input.exactLocation, PRIVACY_RADIUS_M, id)) }), updated_at: new Date() })
+        .set({ ...cols, ...(moved && { public_point: fuzzedPointSql(input.exactLocation, PRIVACY_RADIUS_M, id) }), updated_at: new Date() })
         .where('id', '=', id)
         .execute();
       await trx

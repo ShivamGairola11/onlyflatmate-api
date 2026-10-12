@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Commute, CommuteLeg, CommuteRoute } from '@/features/commute/types';
 import type { GeoLocation } from '@/types/common';
 import { ApiError, invalid } from '../common/api-error.js';
-import { distanceKm, seededRandom } from '../common/geo.js';
-import { type Destination, PlacesService } from '../places/places.service.js';
+import { seededRandom } from '../common/geo.js';
+import { type Destination, type Locality, PlacesService } from '../places/places.service.js';
 import { osrmRoute, osrmTable } from './osrm.js';
 
 /** Peak-hour multiplier on the router's free-flow driving time (NCR). */
@@ -40,32 +40,32 @@ export class CommuteService {
 
   constructor(private readonly places: PlacesService) {}
 
-  private async metroMinutes(origin: GeoLocation, dest: Destination, roadKm: number) {
-    const hops = interchanges((await this.places.nearestLocality(origin)).region, dest.region);
-    return Math.max(8, Math.round(10 + roadKm * 1.75 + hops * 7));
+  private metroMinutes(region: string, dest: Destination, roadKm: number) {
+    return Math.max(8, Math.round(10 + roadKm * 1.75 + interchanges(region, dest.region) * 7));
   }
 
-  private async legsFromRoad(origin: GeoLocation, dest: Destination, road: { distanceKm: number; minutes: number }): Promise<CommuteLeg[]> {
+  private legsFromRoad(region: string, dest: Destination, road: { distanceKm: number; minutes: number }): CommuteLeg[] {
     const car = Math.round(road.minutes * PEAK_TRAFFIC_FACTOR) + 4;
     return [
-      { mode: 'METRO', minutes: await this.metroMinutes(origin, dest, road.distanceKm) },
+      { mode: 'METRO', minutes: this.metroMinutes(region, dest, road.distanceKm) },
       { mode: 'CAR', minutes: car },
       ...(road.distanceKm < 35 ? [{ mode: 'BIKE' as const, minutes: Math.round(car * 0.8) }] : []),
     ];
   }
 
-  private async routed(origin: GeoLocation, dest: Destination, road: { distanceKm: number; minutes: number }): Promise<Commute> {
-    const legs = await this.legsFromRoad(origin, dest, road);
+  private routed(region: string, dest: Destination, road: { distanceKm: number; minutes: number }): Commute {
+    const legs = this.legsFromRoad(region, dest, road);
     return { destinationId: dest.id, destinationName: dest.shortName, distanceKm: road.distanceKm, legs, bestMinutes: Math.min(...legs.map((l) => l.minutes)), quality: 'ROUTED' };
   }
 
-  private async estimated(origin: Origin, dest: Destination): Promise<Commute> {
-    const straight = distanceKm(origin.location, dest);
+  /** `near` is the origin's nearest locality and straight-line km to the destination (PostGIS). */
+  private estimated(origin: Origin, dest: Destination, near: { locality: Locality; km: number }): Commute {
+    const straight = near.km;
     const road = straight * ROAD_FACTOR;
     const rand = seededRandom(`${origin.id}:${dest.id}`);
     const jitter = () => Math.round((rand() - 0.5) * 4);
     const legs: CommuteLeg[] = [
-      { mode: 'METRO', minutes: Math.max(8, (await this.metroMinutes(origin.location, dest, road)) + jitter()) },
+      { mode: 'METRO', minutes: Math.max(8, this.metroMinutes(near.locality.region, dest, road) + jitter()) },
       { mode: 'CAR', minutes: Math.max(5, Math.round(6 + road * (straight > 15 ? 1.9 : 2.3)) + jitter()) },
       ...(straight < 25 ? [{ mode: 'BIKE' as const, minutes: Math.max(4, Math.round(4 + road * 1.7) + jitter()) }] : []),
     ];
@@ -85,12 +85,14 @@ export class CommuteService {
     if (!known) this.cache.set(dest.id, (known = new Map()));
     const key = (o: Origin) => `${o.id}@${o.location.latitude},${o.location.longitude}`;
 
+    // Origins without a cached routed commute need their region (and km for the fallback).
+    const near = await this.places.nearest(origins.filter((o) => !known.get(key(o))), dest);
     const missing = origins.filter((o) => !known.has(key(o)));
     for (let i = 0; i < missing.length; i += TABLE_CHUNK) {
       const batch = missing.slice(i, i + TABLE_CHUNK);
       try {
         const roads = await osrmTable(batch.map((o) => o.location), dest);
-        await Promise.all(batch.map(async (o, k) => known.set(key(o), roads[k] ? await this.routed(o.location, dest, roads[k]) : null)));
+        batch.forEach((o, k) => known.set(key(o), roads[k] ? this.routed(near.get(o.id)!.locality.region, dest, roads[k]) : null));
       } catch (e) {
         // Routers down: don't cache, so the next search tries them again.
         this.log.warn(`Router unavailable, estimating ${batch.length} commutes: ${(e as Error).message}`);
@@ -99,7 +101,7 @@ export class CommuteService {
     }
 
     const out = new Map<string, Commute>();
-    for (const o of origins) out.set(o.id, known.get(key(o)) ?? (await this.estimated(o, dest)));
+    for (const o of origins) out.set(o.id, known.get(key(o)) ?? this.estimated(o, dest, near.get(o.id)!));
     return out;
   }
 
@@ -112,7 +114,8 @@ export class CommuteService {
     } catch {
       throw new ApiError('UNKNOWN', 'Couldn’t get a road route right now.', 503);
     }
-    const legs = await this.legsFromRoad(origin.location, dest, road);
+    const { locality } = (await this.places.nearest([origin], dest)).get(origin.id)!;
+    const legs = this.legsFromRoad(locality.region, dest, road);
     return { listingId: origin.id, destinationId, distanceKm: road.distanceKm, geometry: road.geometry, offPeakMinutes: road.minutes, legs, bestMinutes: Math.min(...legs.map((l) => l.minutes)) };
   }
 }

@@ -1,14 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { belongsToCity, type CityId, getCity } from '@/lib/constants/places';
 import { Body, Controller, Delete, Get, HttpCode, Injectable, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { sql } from 'kysely';
 import { z } from 'zod';
 import type { FlatGroup, GroupMatch, GroupMember, MatchCriterion } from '@/features/groups/types';
 import { forbidden, invalid, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth.js';
-import { distanceKm } from '../common/geo.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { ListingsService } from '../listings/listings.service.js';
-import { PlacesService } from '../places/places.service.js';
 
 const DAY_MS = 86_400_000;
 const dateIso = (d: unknown) => (typeof d === 'string' ? `${d}T00:00:00.000Z` : new Date(d as Date).toISOString());
@@ -21,7 +20,6 @@ export class GroupsService {
   constructor(
     @InjectDb() private readonly db: Database,
     private readonly listings: ListingsService,
-    private readonly places: PlacesService,
   ) {}
 
   private async load(ids?: string[]): Promise<FlatGroup[]> {
@@ -170,14 +168,21 @@ export class GroupsService {
   /** Whole flats scored on budget, location, BHK and move-in (same rules as the web prototype). */
   async matches(id: string): Promise<GroupMatch[]> {
     const g = await this.get(id);
-    const localities = await this.places.localities();
-    const areas = g.areas.map((a) => localities.find((l) => l.slug === a)).filter((a) => !!a);
     const moveIn = new Date(g.moveIn).getTime();
     const candidates = await this.listings.search({ types: ['ENTIRE_FLAT'], limit: 60 });
+    // Km from each candidate to the closest of the group's areas.
+    const ids = candidates.items.map((l) => l.id);
+    const { rows } = g.areas.length && ids.length
+      ? await sql<{ id: string; km: number }>`
+          select l.id, min(extensions.st_distance(l.public_point, a.point)) / 1000 as km
+          from public.listings l join public.localities a on a.slug = any(${sql.val(g.areas)}::text[])
+          where l.id = any(${sql.val(ids)}::uuid[]) group by l.id`.execute(this.db)
+      : { rows: [] };
+    const kmById = new Map(rows.map((r) => [r.id, Number(r.km)]));
     return candidates.items
       .map((listing): GroupMatch => {
         const monthly = listing.pricing.rent + listing.pricing.maintenance;
-        const nearest = areas.length ? Math.min(...areas.map((a) => distanceKm(listing.location, a))) : Infinity;
+        const nearest = kmById.get(listing.id) ?? Infinity;
         const criteria: MatchCriterion[] = [
           { key: 'BUDGET', label: monthly <= g.totalBudget ? 'Budget' : `Over budget by ${rupeesShort(monthly - g.totalBudget)}`, matched: monthly <= g.totalBudget * 1.03 },
           { key: 'LOCATION', label: 'Location', matched: nearest <= 3.5 },

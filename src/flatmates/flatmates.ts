@@ -5,10 +5,8 @@ import { z } from 'zod';
 import type { FlatmateProfile, FlatmateSearchParams } from '@/features/flatmates/types';
 import { invalid, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth.js';
-import { distanceKm } from '../common/geo.js';
 import { queryBool, queryList, queryNumber } from '../common/zod.js';
 import { type Database, InjectDb } from '../db/db.module.js';
-import { PlacesService } from '../places/places.service.js';
 
 /** Preferred areas within this distance of the searched area count as a match. */
 const NEARBY_AREA_KM = 6;
@@ -16,10 +14,7 @@ const dateIso = (d: string | Date) => (typeof d === 'string' ? `${d}T00:00:00.00
 
 @Injectable()
 export class FlatmatesService {
-  constructor(
-    @InjectDb() private readonly db: Database,
-    private readonly places: PlacesService,
-  ) {}
+  constructor(@InjectDb() private readonly db: Database) {}
 
   /** Flatmate profiles joined with the account fields people can't edit here (name, age, verification…). */
   private base() {
@@ -75,10 +70,9 @@ export class FlatmatesService {
       q = q.where((eb) => eb.or([sql<boolean>`f.preferred_areas && ${sql.val(areas)}::text[]`, eb('f.workplace_id', 'in', workplaces)]));
     }
     if (p.area) {
-      const localities = await this.places.localities();
-      const area = localities.find((l) => l.slug === p.area);
-      const nearby = area ? localities.filter((l) => l.slug === area.slug || distanceKm(l, area) < NEARBY_AREA_KM).map((l) => l.slug) : [p.area];
-      q = q.where(sql<boolean>`f.preferred_areas && ${sql.val(nearby)}::text[]`);
+      // The area itself plus every locality within NEARBY_AREA_KM of it.
+      const nearby = sql`array(select l.slug from public.localities l join public.localities a on a.slug = ${p.area} where extensions.st_dwithin(l.point, a.point, ${NEARBY_AREA_KM * 1000}))`;
+      q = q.where(sql<boolean>`f.preferred_areas && (array[${p.area}]::text[] || ${nearby})`);
     }
     if (p.budgetMax !== undefined) q = q.where('f.budget_min', '<=', p.budgetMax);
     if (p.gender && p.gender !== 'ANY') q = q.where('p.gender', '=', p.gender);
