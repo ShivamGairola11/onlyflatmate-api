@@ -17,6 +17,13 @@ const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOStrin
 type MessageRow = { id: string; conversation_id: string; sender_id: string; body: string; sent_at: Date; read_at: Date | null };
 const toMessage = (m: MessageRow): Message => ({ id: m.id, conversationId: m.conversation_id, senderId: m.sender_id, body: m.body, sentAt: iso(m.sent_at)!, readAt: iso(m.read_at) });
 
+/**
+ * A lapsed seeker doesn't receive what others sent after their pass ended: the body never leaves
+ * the server (so it can't be read from the page), only the fact that a message arrived.
+ */
+const lockFor = (viewerId: string, lapsedAt: Date | null) => (m: Message): Message =>
+  lapsedAt && m.senderId !== viewerId && new Date(m.sentAt) > lapsedAt ? { ...m, body: '', locked: true } : m;
+
 @Injectable()
 export class MessagingService {
   constructor(
@@ -28,6 +35,13 @@ export class MessagingService {
   /** Contact Pass entitlement — checked here, never trusted from the client. */
   private async hasActivePass(userId: string) {
     return !!(await this.db.selectFrom('contact_passes').select('id').where('user_id', '=', userId).where('expires_at', '>', new Date()).executeTakeFirst());
+  }
+
+  /** When the user's last pass ended, or null while one is active (nothing locked). Never had one: everything from others is locked. */
+  private async lapsedAt(userId: string): Promise<Date | null> {
+    const row = await this.db.selectFrom('contact_passes').select(sql<Date | null>`max(expires_at)`.as('last')).where('user_id', '=', userId).executeTakeFirst();
+    const last = row?.last ? new Date(row.last) : null;
+    return last && last > new Date() ? null : (last ?? new Date(0));
   }
 
   private async blockedBetween(a: string, b: string) {
@@ -65,6 +79,8 @@ export class MessagingService {
         .groupBy('conversation_id')
         .execute(),
     ]);
+    const seekerIn = new Set(parts.filter((p) => p.user_id === viewerId && p.role === 'SEEKER').map((p) => p.conversation_id));
+    const lock = lockFor(viewerId, seekerIn.size ? await this.lapsedAt(viewerId) : null);
     return convs
       .map((c) => ({
         id: c.id,
@@ -73,7 +89,7 @@ export class MessagingService {
           .filter((p) => p.conversation_id === c.id)
           .map((p): ConversationParticipant => ({ userId: p.user_id, name: p.display_name.split(' ')[0] || 'Member', role: p.role as ConversationParticipant['role'] })),
         initiatorId: c.initiator_id,
-        lastMessage: ((m) => (m ? toMessage(m) : undefined))(last.find((m) => m.conversation_id === c.id)),
+        lastMessage: ((m) => (m ? (seekerIn.has(c.id) ? lock(toMessage(m)) : toMessage(m)) : undefined))(last.find((m) => m.conversation_id === c.id)),
         unreadCount: Number(unread.find((u) => u.conversation_id === c.id)?.n ?? 0),
         createdAt: iso(c.created_at)!,
         updatedAt: iso(c.updated_at)!,
@@ -91,9 +107,15 @@ export class MessagingService {
     return (await this.load(userId, [id]))[0];
   }
 
+  private async roleIn(conversationId: string, userId: string) {
+    return (await this.db.selectFrom('conversation_participants').select('role').where('conversation_id', '=', conversationId).where('user_id', '=', userId).executeTakeFirst())?.role;
+  }
+
   async messages(id: string, userId: string) {
     await this.assertParticipant(id, userId);
-    return (await this.db.selectFrom('messages').selectAll().where('conversation_id', '=', id).orderBy('sent_at').execute()).map(toMessage);
+    const rows = (await this.db.selectFrom('messages').selectAll().where('conversation_id', '=', id).orderBy('sent_at').execute()).map(toMessage);
+    if ((await this.roleIn(id, userId)) !== 'SEEKER') return rows;
+    return rows.map(lockFor(userId, await this.lapsedAt(userId)));
   }
 
   /** What the conversation is about, and who's on the other side. */
@@ -157,10 +179,22 @@ export class MessagingService {
     const text = body.trim();
     if (!text) throw invalid('Message can’t be empty.');
     assertNoContactInfo(text);
+    // The seeker's side of every thread runs on their pass; listers and owners always reply free.
+    if ((await this.roleIn(id, userId)) === 'SEEKER' && !(await this.hasActivePass(userId))) {
+      throw new ApiError('CONTACT_PASS_REQUIRED', 'Your Contact Pass has expired. Renew it to keep chatting — your messages are all still here.', 402);
+    }
     const m = await this.db.insertInto('messages').values({ conversation_id: id, sender_id: userId, body: text }).returningAll().executeTakeFirstOrThrow();
     await this.db.updateTable('conversations').set({ updated_at: m.sent_at }).where('id', '=', id).execute();
     const message = toMessage(m);
-    this.events.publish(ids, { type: 'message', conversationId: id, message });
+    // The live push goes through the same lock: a lapsed seeker gets the "new message" without its text.
+    const seeker = (await this.db.selectFrom('conversation_participants').select('user_id').where('conversation_id', '=', id).where('role', '=', 'SEEKER').executeTakeFirst())?.user_id;
+    const lapsed = seeker && seeker !== userId ? await this.lapsedAt(seeker) : null;
+    if (seeker && lapsed) {
+      this.events.publish(ids.filter((p) => p !== seeker), { type: 'message', conversationId: id, message });
+      this.events.publish([seeker], { type: 'message', conversationId: id, message: lockFor(seeker, lapsed)(message) });
+    } else {
+      this.events.publish(ids, { type: 'message', conversationId: id, message });
+    }
     return message;
   }
 

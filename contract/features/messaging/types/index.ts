@@ -38,6 +38,8 @@ export interface Message {
   body: string;
   sentAt: ISODateString;
   readAt?: ISODateString;
+  /** Sent after the viewer's Contact Pass lapsed: the server withholds `body` (empty) until they renew. */
+  locked?: boolean;
 }
 
 /** Pushed to the signed-in user as things happen (SSE over HTTP). */

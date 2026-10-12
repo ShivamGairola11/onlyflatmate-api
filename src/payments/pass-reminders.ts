@@ -56,7 +56,7 @@ export class PassRemindersService implements OnModuleInit, OnApplicationShutdown
       const ok = await sendEmail(
         r.email,
         'Your Contact Pass ends tomorrow',
-        `Hi ${first},\n\nYour FindFlatmates Contact Pass ends on ${istTime(new Date(r.expires_at))}. After that you can still read and reply to your conversations, but you won't be able to start new ones.\n\nStill looking? Renew now — the new pass starts when this one ends, so you don't lose any days:\n${config.WEB_URL}/contact-pass\n\nGood luck with the search!`,
+        `Hi ${first},\n\nYour FindFlatmates Contact Pass ends on ${istTime(new Date(r.expires_at))}. After that you can still read your conversations, but you'll need a pass to send messages or start new ones.\n\nStill looking? Renew now — the new pass starts when this one ends, so you don't lose any days:\n${config.WEB_URL}/contact-pass\n\nGood luck with the search!`,
       );
       if (ok) sent++;
       // Couldn't send: release the claim so the next run tries again.
