@@ -3,11 +3,16 @@ import { Body, Controller, Delete, HttpCode, Injectable, Logger, Post } from '@n
 import { createClient } from '@supabase/supabase-js';
 import { sql } from 'kysely';
 import sharp, { type Metadata } from 'sharp';
+
+// Decoded images aren't kept in memory between requests, and one decode can't take every core.
+sharp.cache(false);
+sharp.concurrency(2);
 import { z } from 'zod';
 import { ApiError, invalid } from '../common/api-error.js';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 const STAGING = 'avatar-uploads';
 const PUBLIC = 'avatars';
@@ -16,7 +21,6 @@ const MAX_BYTES = 5 * 1024 * 1024;
 /** Decoded size cap: rejects "decompression bombs" (tiny files that expand to huge images). */
 const MAX_PIXELS = 40_000_000;
 const SIZE = 512;
-const COOLDOWN_MS = 10_000;
 
 /**
  * Profile photos. The browser uploads to a private staging bucket; nothing reaches the public bucket until
@@ -28,7 +32,6 @@ export class AvatarService {
   private readonly log = new Logger('Avatars');
   private readonly client = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   /** One upload per user per few seconds; per process is enough to stop hammering. */
-  private readonly lastUpload = new Map<string, number>();
 
   constructor(@InjectDb() private readonly db: Database) {}
 
@@ -41,9 +44,6 @@ export class AvatarService {
 
   async publish(userId: string, path: string) {
     if (!path.startsWith(`${userId}/`) || path.includes('..')) throw invalid('That upload doesn’t belong to you.');
-    const last = this.lastUpload.get(userId) ?? 0;
-    if (Date.now() - last < COOLDOWN_MS) throw new ApiError('RATE_LIMITED', 'Give it a few seconds before uploading another photo.', 429);
-    this.lastUpload.set(userId, Date.now());
 
     const staging = this.client.storage.from(STAGING);
     try {
@@ -119,12 +119,14 @@ export class AvatarService {
 export class AvatarController {
   constructor(private readonly avatars: AvatarService) {}
 
+  @RateLimit(20, 3600)
   @Post('upload')
   upload(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const { contentType } = z.object({ contentType: z.enum(TYPES, 'Use a JPG, PNG or WebP photo.'), sizeBytes: z.number().int().positive().max(MAX_BYTES, 'Photos must be under 5 MB.') }).parse(body);
     return this.avatars.uploadSlot(user.id, contentType);
   }
 
+  @RateLimit(6, 60)
   @Post()
   @HttpCode(200)
   publish(@CurrentUser() user: AuthUser, @Body() body: unknown) {

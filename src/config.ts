@@ -38,11 +38,19 @@ const schema = z.object({
   RESEND_API_KEY: z.string().optional(),
   /** Sender for those emails; the domain must be verified in Resend. */
   EMAIL_FROM: z.string().default('FindFlatmates <verify@findflatmates.in>'),
+  /**
+   * Shared secret the Next.js BFF sends as `x-internal-key`. With it set, the API answers nobody else
+   * (404), so its address leaking doesn't expose any data. Required in production.
+   */
+  INTERNAL_API_KEY: z.string().min(32).optional(),
   /** The web app's public origin, for links in emails (no trailing slash). */
   WEB_URL: z.url().default('https://findflatmates.in').transform((u) => u.replace(/\/+$/, '')),
 }).refine((c) => c.PAYMENTS_PROVIDER !== 'razorpay' || (c.RAZORPAY_KEY_ID && c.RAZORPAY_KEY_SECRET), {
   message: 'RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required when PAYMENTS_PROVIDER=razorpay',
-});
+})
+  // Production must be locked to the BFF and take real payments; a forgotten dev setting fails the deploy.
+  .refine((c) => process.env.NODE_ENV !== 'production' || c.INTERNAL_API_KEY, { message: 'INTERNAL_API_KEY (32+ chars) is required in production' })
+  .refine((c) => process.env.NODE_ENV !== 'production' || c.PAYMENTS_PROVIDER === 'razorpay', { message: 'PAYMENTS_PROVIDER=mock is not allowed in production' });
 
 export type Config = z.infer<typeof schema>;
 

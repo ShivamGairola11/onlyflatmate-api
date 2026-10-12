@@ -57,7 +57,7 @@ export const listingInput = z
     photos: z.array(z.url()).max(8),
     title: z.string().trim().max(120).optional(),
     description: z.string().trim().max(1000).optional(),
-    source: z.enum(['PLATFORM', 'FACEBOOK_IMPORT', 'PARTNER']).optional(),
+    source: z.enum(['PLATFORM', 'FACEBOOK_IMPORT']).optional(),
   })
   .refine((d) => d.property.buildingType !== 'OTHER' || (d.property.buildingTypeOther?.length ?? 0) >= 2, { path: ['property', 'buildingTypeOther'], message: 'Describe the building' });
 

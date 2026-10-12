@@ -3,7 +3,8 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
 import { config } from '../config.js';
-import { unauthenticated } from './api-error.js';
+import { type Database, InjectDb } from '../db/db.module.js';
+import { ApiError, unauthenticated } from './api-error.js';
 
 export interface AuthUser {
   id: string;
@@ -39,9 +40,28 @@ async function verify(token: string): Promise<JWTPayload> {
   return (await jwtVerify(token, jwks, { ...options, issuer })).payload;
 }
 
+/** How long a "not banned" answer is trusted, so a ban takes effect within this, not at token expiry (~1 h). */
+const BAN_CHECK_TTL_MS = 30_000;
+
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  private readonly banChecked = new Map<string, { banned: boolean; at: number }>();
+
+  constructor(
+    private readonly reflector: Reflector,
+    @InjectDb() private readonly db: Database,
+  ) {}
+
+  private async isBanned(userId: string) {
+    const hit = this.banChecked.get(userId);
+    if (hit && Date.now() - hit.at < BAN_CHECK_TTL_MS) return hit.banned;
+    const row = await this.db.selectFrom('auth.users').select('banned_until').where('id', '=', userId).executeTakeFirst();
+    // A deleted account counts as banned: its token must stop working too.
+    const banned = !row || (!!row.banned_until && new Date(row.banned_until) > new Date());
+    if (this.banChecked.size > 50_000) this.banChecked.clear();
+    this.banChecked.set(userId, { banned, at: Date.now() });
+    return banned;
+  }
 
   async canActivate(ctx: ExecutionContext) {
     const req = ctx.switchToHttp().getRequest<AuthedRequest>();
@@ -58,6 +78,7 @@ export class AuthGuard implements CanActivate {
         if (!isPublic) throw unauthenticated();
       }
     }
+    if (req.user && (await this.isBanned(req.user.id))) throw new ApiError('FORBIDDEN', 'This account has been suspended.', 403);
     if (!isPublic && !req.user) throw unauthenticated();
     return true;
   }

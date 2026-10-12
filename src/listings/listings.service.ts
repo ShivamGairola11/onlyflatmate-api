@@ -12,8 +12,14 @@ const PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 60;
 /** Past this many matches the map asks people to zoom in. */
 const MAX_PINS = 500;
-/** Matches considered when a workplace is set (each needs a commute). */
-const MAX_COMMUTE_CANDIDATES = 2000;
+/** Matches considered when a workplace is set (each needs a commute, i.e. routing calls). */
+const MAX_COMMUTE_CANDIDATES = 300;
+/**
+ * How deep a search can be paged. Signed out, browsing is generous but bulk-copying the catalogue isn't:
+ * past this the list just ends (with sign-in, and rate limits per account, for more).
+ */
+const MAX_RESULTS_SIGNED_OUT = 120;
+const MAX_RESULTS_SIGNED_IN = 1000;
 
 type Eb = ExpressionBuilder<AppDB & { l: Listings }, 'l'>;
 
@@ -72,7 +78,9 @@ export class ListingsService {
         and.push(sql<SqlBool>`extensions.st_dwithin(l.public_point, extensions.st_setsrid(extensions.st_makepoint(${focus.longitude}, ${focus.latitude}), 4326)::extensions.geography, ${focus.radiusKm * 1000})`);
       }
       if (viewerId) {
+        // Blocks hide people both ways.
         and.push(eb('l.lister_id', 'not in', eb.selectFrom('blocks').select('blocked_user_id').where('blocker_id', '=', viewerId)));
+        and.push(eb('l.lister_id', 'not in', eb.selectFrom('blocks').select('blocker_id').where('blocked_user_id', '=', viewerId)));
       }
       return eb.and(and);
     };
@@ -133,9 +141,12 @@ export class ListingsService {
   async search(p: ListingSearchParams & PageParams, viewerId?: string): Promise<ListingSearchResult> {
     const focus = await this.areaFocus(p.area);
     const where = this.where(p, focus, viewerId);
-    const size = Math.min(Math.max(p.limit ?? PAGE_SIZE, 1), MAX_PAGE_SIZE);
-    const offset = p.cursor ? Number(Buffer.from(p.cursor, 'base64url').toString()) || 0 : 0;
-    const page = (end: number, total: number) => (end < total ? Buffer.from(String(end)).toString('base64url') : undefined);
+    const cap = viewerId ? MAX_RESULTS_SIGNED_IN : MAX_RESULTS_SIGNED_OUT;
+    // The cursor is client-supplied: only a whole number inside the cap is accepted.
+    const decoded = p.cursor ? Math.trunc(Number(Buffer.from(p.cursor, 'base64url').toString())) : 0;
+    const offset = Number.isFinite(decoded) ? Math.min(Math.max(decoded, 0), cap) : 0;
+    const size = Math.max(0, Math.min(Math.max(p.limit ?? PAGE_SIZE, 1), MAX_PAGE_SIZE, cap - offset));
+    const page = (end: number, total: number) => (end < Math.min(total, cap) ? Buffer.from(String(end)).toString('base64url') : undefined);
 
     if (p.workplaceId) {
       const ranked = await this.rankedByCommute(p, where);
@@ -197,9 +208,14 @@ export class ListingsService {
 
   async get(id: string, viewerId?: string): Promise<{ listing: Listing; lister: PublicUser; isOwner: boolean }> {
     const row = await this.db.selectFrom('listings as l').selectAll('l').select([lat, lng]).where('l.id', '=', id).executeTakeFirst();
-    if (!row) throw notFound('This listing doesn’t exist or has been removed.');
+    // Taken down by moderators: gone for everyone but the lister.
+    if (!row || (row.status === 'REMOVED' && viewerId !== row.lister_id)) throw notFound('This listing doesn’t exist or has been removed.');
     if (viewerId && viewerId !== row.lister_id) {
-      const blocked = await this.db.selectFrom('blocks').select('id').where('blocker_id', '=', viewerId).where('blocked_user_id', '=', row.lister_id).executeTakeFirst();
+      const blocked = await this.db
+        .selectFrom('blocks')
+        .select('id')
+        .where((eb) => eb.or([eb.and([eb('blocker_id', '=', viewerId), eb('blocked_user_id', '=', row.lister_id)]), eb.and([eb('blocker_id', '=', row.lister_id), eb('blocked_user_id', '=', viewerId)])]))
+        .executeTakeFirst();
       if (blocked) throw forbidden('You’ve blocked this lister.');
       await this.db.updateTable('listings').set((eb) => ({ view_count: eb('view_count', '+', 1) })).where('id', '=', id).execute();
     }
@@ -207,9 +223,16 @@ export class ListingsService {
     return { listing, lister: await this.publicUser(row.lister_id), isOwner: viewerId === row.lister_id };
   }
 
-  async getMany(ids: string[]): Promise<Listing[]> {
+  /** Public batch read. `includeRemoved` only for the owner's own just-edited listing. */
+  async getMany(ids: string[], includeRemoved = false): Promise<Listing[]> {
     if (!ids.length) return [];
-    const rows = await this.db.selectFrom('listings as l').selectAll('l').select([lat, lng]).where('l.id', 'in', ids).execute();
+    const rows = await this.db
+      .selectFrom('listings as l')
+      .selectAll('l')
+      .select([lat, lng])
+      .where('l.id', 'in', ids)
+      .$if(!includeRemoved, (q) => q.where('l.status', '!=', 'REMOVED'))
+      .execute();
     const byId = new Map((await this.hydrate(rows)).map((l) => [l.id, l]));
     return ids.map((id) => byId.get(id)).filter((l): l is Listing => !!l);
   }

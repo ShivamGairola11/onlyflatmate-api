@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
 import { assertNoContactInfo } from '../common/contact-info.js';
 import { type ProfilePatch, UsersService } from './users.service.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 const lifestyle = z.array(z.string().max(30)).max(14);
 
@@ -21,11 +22,11 @@ const profilePatch = z
     languages: z.array(z.string().max(30)).max(8),
     hometown: z.string().trim().max(60),
     lookingFor: z.object({
-      areas: z.array(z.string()).max(8),
-      budgetMin: z.number().int().min(0),
-      budgetMax: z.number().int().min(0),
-      bhk: z.array(z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS'])),
-      moveIn: z.string(),
+      areas: z.array(z.string().max(80)).max(8),
+      budgetMin: z.number().int().min(0).max(1_000_000),
+      budgetMax: z.number().int().min(0).max(1_000_000),
+      bhk: z.array(z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS'])).max(5),
+      moveIn: z.iso.date().or(z.iso.datetime()),
       genderPreference: z.enum(['MALE', 'FEMALE', 'ANY']),
     }),
   })
@@ -40,10 +41,11 @@ export class UsersController {
     return this.users.me(user.id);
   }
 
+  @RateLimit(60, 3600)
   @Patch('profile')
   update(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const patch = profilePatch.parse(body);
-    assertNoContactInfo(patch.displayName, patch.profession, patch.industry, patch.workArea, patch.bio, patch.hometown);
+    assertNoContactInfo(patch.displayName, patch.profession, patch.industry, patch.workArea, patch.bio, patch.hometown, ...(patch.languages ?? []));
     return this.users.updateProfile(user.id, patch as ProfilePatch);
   }
 

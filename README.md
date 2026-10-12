@@ -46,6 +46,10 @@ the web app (it writes here), then `npm run db:reset`.
 - **Errors** always leave as `{ code, message }` (`src/common/exception.filter.ts`), the shape the
   web app's HTTP client turns back into an `ApiError`.
 
+## Security
+
+Only the web app's BFF may call this API (shared `INTERNAL_API_KEY`, everything else gets a 404), every route is rate-limited, and production refuses to start without the key or with mock payments. The full audit — findings, fixes, rate limits, deployment checklist and known limits — is in the web app at `docs/SECURITY.md`. Re-run the attack suite with `scripts/security-smoke.sh` after changing auth, payments, uploads or any public endpoint.
+
 ## Scripts
 
 | Script | What it does |

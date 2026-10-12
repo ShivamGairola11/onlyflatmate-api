@@ -24,11 +24,12 @@ const dayMonth = (iso: string) => {
 };
 
 function normalise(text: string) {
+  // Collapse whitespace first: the sector pattern's `\s*-?\s*` is quadratic on long runs of spaces.
   return text
     .toLowerCase()
+    .replace(/\s+/g, ' ')
     .replace(/\bsec(tor)?\.?\s*-?\s*(\d+)/g, 'sector $2')
-    .replace(/\bgurugram\b|\bggn\b/g, 'gurgaon')
-    .replace(/\s+/g, ' ');
+    .replace(/\bgurugram\b|\bggn\b/g, 'gurgaon');
 }
 
 function matchesLocality(t: string, l: Locality): boolean {

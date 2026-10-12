@@ -43,6 +43,8 @@ export class PassRemindersService implements OnModuleInit, OnApplicationShutdown
           and c.expires_at > now() and c.expires_at <= now() + ${REMIND_BEFORE}::interval
           -- Already renewed: a later pass takes over, so there's nothing to remind about.
           and not exists (select 1 from public.contact_passes n where n.user_id = c.user_id and n.expires_at > c.expires_at)
+          -- Bounded batch per run; the next hour picks up the rest.
+          and c.id in (select id from public.contact_passes where reminder_sent_at is null and expires_at > now() and expires_at <= now() + ${REMIND_BEFORE}::interval limit 500)
         returning c.id, c.user_id, c.expires_at
       )
       select claimed.id, claimed.expires_at, u.email, p.display_name as name

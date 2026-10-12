@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { sql } from 'kysely';
 import { AdminController, AdminGuard } from './admin/admin.js';
 import { AuthGuard, Public } from './common/auth.js';
+import { RateLimitGuard } from './common/rate-limit.js';
 import { ApiExceptionFilter } from './common/exception.filter.js';
 import { CommuteController } from './commute/commute.controller.js';
 import { CommuteService } from './commute/commute.service.js';
@@ -87,6 +88,8 @@ class HealthController {
     PassRemindersService,
     // Signed-in by default; routes opt out with @Public().
     { provide: APP_GUARD, useClass: AuthGuard },
+    // After AuthGuard, so signed-in callers are limited per account rather than per IP.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })

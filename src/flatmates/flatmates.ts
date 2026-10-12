@@ -8,6 +8,7 @@ import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth
 import { assertNoContactInfo } from '../common/contact-info.js';
 import { queryBool, queryList, queryNumber } from '../common/zod.js';
 import { type Database, InjectDb } from '../db/db.module.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 /** Preferred areas within this distance of the searched area count as a match. */
 const NEARBY_AREA_KM = 6;
@@ -37,7 +38,8 @@ export class FlatmatesService {
     return {
       id: r.id,
       userId: r.user_id,
-      name: r.display_name,
+      // First name only, as everywhere else other people see you.
+      name: r.display_name.split(' ')[0] || 'Member',
       age: r.age ?? 0,
       gender: (r.gender ?? 'OTHER') as FlatmateProfile['gender'],
       profession: r.profession,
@@ -62,7 +64,11 @@ export class FlatmatesService {
   async search(p: FlatmateSearchParams, viewerId?: string): Promise<FlatmateProfile[]> {
     let q = this.base().orderBy('p.last_active_at', 'desc');
     if (viewerId) {
-      q = q.where('f.user_id', '!=', viewerId).where('f.user_id', 'not in', this.db.selectFrom('blocks').select('blocked_user_id').where('blocker_id', '=', viewerId));
+      // Blocks hide people both ways: neither side sees the other.
+      q = q
+        .where('f.user_id', '!=', viewerId)
+        .where('f.user_id', 'not in', this.db.selectFrom('blocks').select('blocked_user_id').where('blocker_id', '=', viewerId))
+        .where('f.user_id', 'not in', this.db.selectFrom('blocks').select('blocker_id').where('blocked_user_id', '=', viewerId));
     }
     if (p.city) {
       // In the metro: a preferred area there, or a workplace there (same rule as belongsToCity).
@@ -145,8 +151,8 @@ const flatmateInput = z
     budgetMin: z.number().int().min(2000).max(200000),
     budgetMax: z.number().int().min(2000).max(200000),
     preferredAreas: z.array(z.string().max(80)).min(1).max(5),
-    lookingFor: z.array(z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS'])).min(1),
-    moveIn: z.string().min(10),
+    lookingFor: z.array(z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS'])).min(1).max(5),
+    moveIn: z.iso.date().or(z.iso.datetime()),
     lifestyle: z.array(z.string().max(30)).max(8),
     genderPreference: z.enum(['MALE', 'FEMALE', 'ANY']),
     hasPlace: z.boolean(),
@@ -161,6 +167,7 @@ export class FlatmatesController {
   constructor(private readonly flatmates: FlatmatesService) {}
 
   @Public()
+  @RateLimit(60, 60)
   @Get()
   search(@Query() query: unknown, @OptionalUser() user?: AuthUser) {
     return this.flatmates.search(searchQuery.parse(query) as FlatmateSearchParams, user?.id);
@@ -175,7 +182,7 @@ export class FlatmatesController {
   save(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const parsed = flatmateInput.safeParse(body);
     if (!parsed.success) throw invalid(parsed.error.issues[0]?.message ?? 'Check your flatmate profile.');
-    assertNoContactInfo(parsed.data.bio, parsed.data.workArea);
+    assertNoContactInfo(parsed.data.bio, parsed.data.workArea, ...parsed.data.languages);
     return this.flatmates.saveMine(user.id, parsed.data);
   }
 

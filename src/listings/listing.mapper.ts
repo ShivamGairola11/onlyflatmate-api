@@ -14,7 +14,8 @@ const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : d);
 export function deriveStatus(stored: string, lastConfirmedAt: Date | string): ListingStatus {
   if (stored === 'OCCUPIED') return 'OCCUPIED';
   const hours = (Date.now() - new Date(lastConfirmedAt).getTime()) / 3_600_000;
-  if (stored === 'EXPIRED' || hours > EXPIRE_AFTER_HOURS) return 'EXPIRED';
+  // REMOVED (moderation) is only ever shown to its owner, as expired.
+  if (stored === 'EXPIRED' || stored === 'REMOVED' || hours > EXPIRE_AFTER_HOURS) return 'EXPIRED';
   return hours > STALE_AFTER_HOURS ? 'STALE' : 'ACTIVE';
 }
 

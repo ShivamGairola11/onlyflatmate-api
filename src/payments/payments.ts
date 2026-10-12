@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   Body,
   Controller,
@@ -12,10 +12,6 @@ import {
 import type { Request } from 'express';
 import { sql } from 'kysely';
 import Razorpay from 'razorpay';
-import {
-  validatePaymentVerification,
-  validateWebhookSignature,
-} from 'razorpay/dist/utils/razorpay-utils.js';
 import { z } from 'zod';
 import type { ContactPass } from '@/features/payments/types';
 import type { ContactPassStatus } from '@/lib/api/contract';
@@ -23,6 +19,7 @@ import { ApiError, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, Public } from '../common/auth.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 /** Same values as the web app's contactPassConfig. */
 const PRICE_INR = 59;
@@ -44,6 +41,13 @@ export const RZP_METHOD: Record<string, Method> = {
   card: 'CARD',
   netbanking: 'NETBANKING',
 };
+
+/** HMAC-SHA256 hex check in constant time (the SDK's helpers compare with `===`). */
+function signatureOk(payload: string, signature: string, secret: string) {
+  const expected = createHmac('sha256', secret).update(payload).digest();
+  const given = Buffer.from(signature, 'hex');
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
 
 const paymentFailed = (message: string, status = 400) =>
   new ApiError('PAYMENT_FAILED', message, status);
@@ -85,6 +89,7 @@ export class PaymentsController {
   }
 
   /** Step 1 of checkout: an order the payment provider will charge against. */
+  @RateLimit(20, 3600)
   @Post('payments/contact-pass/order')
   async order(@CurrentUser() user: AuthUser) {
     let providerOrderId = `order_${randomUUID()}`;
@@ -125,6 +130,7 @@ export class PaymentsController {
   }
 
   /** Step 2: confirm the payment and grant the pass. Idempotent — retries return the same pass. */
+  @RateLimit(30, 3600)
   @Post('payments/confirm')
   async confirm(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const input = z
@@ -157,11 +163,8 @@ export class PaymentsController {
         throw paymentFailed('Payment details are missing.');
       if (!config.RAZORPAY_KEY_SECRET)
         throw paymentFailed('Online payments aren’t set up.', 503);
-      const valid = validatePaymentVerification(
-        {
-          order_id: payment.provider_order_id,
-          payment_id: input.providerPaymentId,
-        },
+      const valid = signatureOk(
+        `${payment.provider_order_id}|${input.providerPaymentId}`,
         input.providerSignature,
         config.RAZORPAY_KEY_SECRET,
       );
@@ -169,8 +172,23 @@ export class PaymentsController {
         throw paymentFailed(
           'We couldn’t verify this payment. If money was deducted, please contact support.',
         );
+      // The signature proves the payment was authorised, not that money was taken. Ask Razorpay, capture
+      // it if needed, and grant only for the right order and amount — an uncaptured payment auto-refunds.
+      const rp = await razorpay!.payments.fetch(input.providerPaymentId).catch(() => undefined);
+      if (!rp || rp.order_id !== payment.provider_order_id || Number(rp.amount) !== payment.amount * 100)
+        throw paymentFailed('We couldn’t verify this payment. If money was deducted, please contact support.');
+      if (rp.status === 'authorized') {
+        await razorpay!.payments.capture(rp.id, payment.amount * 100, 'INR').catch(() => {
+          throw paymentFailed('We couldn’t complete this payment. You haven’t been charged — please try again.', 502);
+        });
+      } else if (rp.status !== 'captured') {
+        throw paymentFailed('This payment didn’t go through. You haven’t been charged.');
+      }
       providerPaymentId = input.providerPaymentId;
-    } else if (payment.provider !== 'MOCK') {
+    } else if (payment.provider === 'MOCK') {
+      // Leftover test orders must never turn into free passes once real payments are on.
+      if (razorpay) throw paymentFailed('This order has expired. Please start the payment again.');
+    } else {
       throw paymentFailed('Unsupported payment provider.', 501);
     }
 
@@ -194,7 +212,7 @@ export class PaymentsController {
     if (
       !raw ||
       !signature ||
-      !validateWebhookSignature(raw, signature, config.RAZORPAY_WEBHOOK_SECRET)
+      !signatureOk(raw, signature, config.RAZORPAY_WEBHOOK_SECRET)
     ) {
       throw new ApiError('FORBIDDEN', 'Invalid signature.', 401);
     }
@@ -222,8 +240,9 @@ export class PaymentsController {
       .where('provider_order_id', '=', p.order_id)
       .where('provider', '=', 'RAZORPAY')
       .executeTakeFirst();
-    // Not one of our Contact Pass orders, or the amount doesn't match what we charged: nothing to grant.
-    if (!payment || p.amount !== payment.amount * 100) return { ok: true };
+    // Not one of our Contact Pass orders, the amount doesn't match, or it's already settled
+    // (retries and replays must never undo a refund): nothing to grant.
+    if (!payment || p.amount !== payment.amount * 100 || payment.status === 'SUCCEEDED' || payment.status === 'REFUNDED') return { ok: true };
 
     await grantPass(this.db, payment, p.id, RZP_METHOD[p.method]);
     return { ok: true };
@@ -242,7 +261,7 @@ export function grantPass(
   days = VALIDITY_DAYS,
 ) {
   return db.transaction().execute(async (trx) => {
-    await trx
+    const updated = await trx
       .updateTable('payments')
       .set({
         status: 'SUCCEEDED',
@@ -250,7 +269,10 @@ export function grantPass(
         provider_payment_id: providerPaymentId,
       })
       .where('id', '=', payment.id)
-      .execute();
+      // A refunded payment stays refunded, whatever arrives late.
+      .where('status', '!=', 'REFUNDED')
+      .executeTakeFirst();
+    if (!updated.numUpdatedRows) throw paymentFailed('This payment was refunded.', 409);
     // Renewing early stacks: the new pass starts when the current one ends, so no paid days are lost.
     // (greatest() skips the null from a user with no passes.)
     const { from } = await trx

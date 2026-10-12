@@ -6,6 +6,7 @@ import { Public } from '../common/auth.js';
 import { latOf, lngOf } from '../common/geo.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { CommuteService, type Origin } from './commute.service.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 const destinationId = z.string().min(1).max(200);
 
@@ -24,6 +25,7 @@ export class CommuteController {
   }
 
   @Public()
+  @RateLimit(30, 60)
   @Post('estimate')
   async estimate(@Body() body: unknown): Promise<Record<string, Commute>> {
     const input = z.object({ listingIds: z.array(z.uuid()).max(100), destinationId }).parse(body);
@@ -32,6 +34,7 @@ export class CommuteController {
   }
 
   @Public()
+  @RateLimit(20, 60)
   @Get('route')
   async route(@Query() query: unknown) {
     const input = z.object({ listingId: z.uuid(), destinationId }).parse(query);

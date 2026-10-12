@@ -4,11 +4,13 @@ import type { Report } from '@/types/common';
 import { invalid } from '../common/api-error.js';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
 import { type Database, InjectDb } from '../db/db.module.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 @Controller()
 export class SafetyController {
   constructor(@InjectDb() private readonly db: Database) {}
 
+  @RateLimit(20, 3600)
   @Post('reports')
   async report(
     @CurrentUser() user: AuthUser,
@@ -52,6 +54,7 @@ export class SafetyController {
     };
   }
 
+  @RateLimit(30, 3600)
   @Post('blocks')
   @HttpCode(204)
   async block(@CurrentUser() user: AuthUser, @Body() body: unknown) {

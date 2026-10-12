@@ -96,13 +96,13 @@ export class ListingEditorService {
     await this.db.transaction().execute(async (trx) => {
       await trx
         .insertInto('listings')
-        .values({ id, lister_id: userId, source: input.source ?? 'PLATFORM', public_point: fuzzedPointSql(input.exactLocation, PRIVACY_RADIUS_M, id), location_precision_m: PRIVACY_RADIUS_M, ...cols })
+        .values({ id, lister_id: userId, source: input.source ?? 'PLATFORM', public_point: fuzzedPointSql(input.exactLocation, PRIVACY_RADIUS_M), location_precision_m: PRIVACY_RADIUS_M, ...cols })
         .execute();
       await trx.insertInto('listing_private_locations').values({ listing_id: id, exact_point: pointSql(input.exactLocation), address_line: input.addressLine }).execute();
       await this.setPhotos(trx, id, userId, input.photos);
       await trx.updateTable('profiles').set({ mode: 'OFFERING' }).where('user_id', '=', userId).execute();
     });
-    return (await this.listings.getMany([id]))[0];
+    return (await this.listings.getMany([id], true))[0];
   }
 
   async editable(id: string, userId: string): Promise<EditableListing> {
@@ -126,7 +126,7 @@ export class ListingEditorService {
     await this.db.transaction().execute(async (trx) => {
       await trx
         .updateTable('listings')
-        .set({ ...cols, ...(moved && { public_point: fuzzedPointSql(input.exactLocation, PRIVACY_RADIUS_M, id) }), updated_at: new Date() })
+        .set({ ...cols, ...(moved && { public_point: fuzzedPointSql(input.exactLocation, PRIVACY_RADIUS_M) }), updated_at: new Date() })
         .where('id', '=', id)
         .execute();
       await trx
@@ -136,7 +136,7 @@ export class ListingEditorService {
         .execute();
       await this.setPhotos(trx, id, userId, input.photos);
     });
-    return (await this.listings.getMany([id]))[0];
+    return (await this.listings.getMany([id], true))[0];
   }
 
   async remove(id: string, userId: string) {
@@ -147,14 +147,16 @@ export class ListingEditorService {
 
   async confirmAvailability(id: string, userId: string): Promise<Listing> {
     await this.own(id, userId);
-    await this.db.updateTable('listings').set({ status: 'ACTIVE', last_confirmed_at: new Date(), updated_at: new Date() }).where('id', '=', id).execute();
-    return (await this.listings.getMany([id]))[0];
+    // A moderation takedown can't be undone by the lister.
+    const r = await this.db.updateTable('listings').set({ status: 'ACTIVE', last_confirmed_at: new Date(), updated_at: new Date() }).where('id', '=', id).where('status', '!=', 'REMOVED').executeTakeFirst();
+    if (!r.numUpdatedRows) throw forbidden('This listing was removed by our moderators. Contact support if you think that’s a mistake.');
+    return (await this.listings.getMany([id], true))[0];
   }
 
   async markOccupied(id: string, userId: string): Promise<Listing> {
     await this.own(id, userId);
-    await this.db.updateTable('listings').set({ status: 'OCCUPIED', updated_at: new Date() }).where('id', '=', id).execute();
-    return (await this.listings.getMany([id]))[0];
+    await this.db.updateTable('listings').set({ status: 'OCCUPIED', updated_at: new Date() }).where('id', '=', id).where('status', '!=', 'REMOVED').execute();
+    return (await this.listings.getMany([id], true))[0];
   }
 
   async importFromText(text: string): Promise<ImportedListing> {

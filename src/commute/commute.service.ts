@@ -11,6 +11,8 @@ const PEAK_TRAFFIC_FACTOR = 1.6;
 const ROAD_FACTOR = 1.35;
 /** OSRM's default max-table-size is 100 coordinates, destination included. */
 const TABLE_CHUNK = 99;
+const MAX_CACHED_DESTINATIONS = 500;
+const MAX_CACHED_PER_DESTINATION = 5000;
 
 const FAR_PAIRS: [string, string][] = [
   ['GURUGRAM', 'NOIDA'],
@@ -36,6 +38,7 @@ export class CommuteService {
   private readonly log = new Logger('Commute');
   // ponytail: per-process cache keyed by destination + listing point. Move to a
   // commute_cache table (H3 cell × destination) once there's more than one API instance.
+  // Bounded both ways (least-recently-used destinations go first), so callers can't grow it forever.
   private readonly cache = new Map<string, Map<string, Commute | null>>();
 
   constructor(private readonly places: PlacesService) {}
@@ -81,8 +84,14 @@ export class CommuteService {
   /** Commute from each origin to the destination: routed where possible, estimated otherwise. */
   async forOrigins(origins: Origin[], destinationId: string): Promise<Map<string, Commute>> {
     const dest = await this.destination(destinationId);
-    let known = this.cache.get(dest.id);
-    if (!known) this.cache.set(dest.id, (known = new Map()));
+    // Custom pins are keyed by their (rounded) point, not their free-text name, so renaming can't dodge the cache.
+    const destKey = dest.kind === 'CUSTOM' ? `geo:${dest.latitude.toFixed(4)},${dest.longitude.toFixed(4)}` : dest.id;
+    let known = this.cache.get(destKey);
+    if (known) this.cache.delete(destKey); // re-inserted below: Map order = recency
+    else known = new Map();
+    this.cache.set(destKey, known);
+    if (this.cache.size > MAX_CACHED_DESTINATIONS) this.cache.delete(this.cache.keys().next().value!);
+    if (known.size > MAX_CACHED_PER_DESTINATION) known.clear();
     const key = (o: Origin) => `${o.id}@${o.location.latitude},${o.location.longitude}`;
 
     // Origins without a cached routed commute need their region (and km for the fallback).

@@ -30,7 +30,26 @@ function toSuggestion(f: PhotonFeature): LocationSuggestion | null {
   };
 }
 
+/**
+ * Same question, same answer: cache geocoder results (bounded, a day) so repeated searches — and anyone
+ * hammering the endpoint — don't each cost a call to the shared public geocoder.
+ */
+const CACHE_MAX = 2000;
+const CACHE_TTL_MS = 24 * 3_600_000;
+const cache = new Map<string, { at: number; value: LocationSuggestion[] }>();
+
 async function request(path: string, params: Record<string, string>) {
+  const key = `${path}?${new URLSearchParams(params)}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+  const value = await fetchSuggestions(path, params);
+  cache.delete(key);
+  cache.set(key, { at: Date.now(), value });
+  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
+  return value;
+}
+
+async function fetchSuggestions(path: string, params: Record<string, string>) {
   const res = await fetch(`${config.GEOCODER_URL}${path}?${new URLSearchParams(params)}`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Geocoder responded ${res.status}`);
   const body = (await res.json()) as { features?: PhotonFeature[] };
@@ -39,7 +58,8 @@ async function request(path: string, params: Record<string, string>) {
 
 /** Free-text address search anywhere in India, ranked towards the given metro. */
 export async function geocode(query: string, cityId?: CityId): Promise<LocationSuggestion[]> {
-  const q = query.trim();
+  // Lower-cased and space-collapsed, so trivial variants share a cache entry.
+  const q = query.trim().toLowerCase().replace(/\s+/g, ' ');
   if (q.length < 3) return [];
   const city = getCity(cityId);
   const bias: Record<string, string> = city ? { lat: String(city.center.latitude), lon: String(city.center.longitude) } : {};
@@ -51,6 +71,7 @@ export async function geocode(query: string, cityId?: CityId): Promise<LocationS
 
 /** Best address for a point (a dropped pin), keeping the exact point the user chose. */
 export async function reverseGeocode(point: GeoLocation): Promise<LocationSuggestion | null> {
-  const [first] = await request('/reverse', { lat: String(point.latitude), lon: String(point.longitude), limit: '1', lang: 'en' });
+  // ~11 m precision is plenty for an address, and lets nearby pins share a cache entry.
+  const [first] = await request('/reverse', { lat: point.latitude.toFixed(4), lon: point.longitude.toFixed(4), limit: '1', lang: 'en' });
   return first ? { ...first, location: { ...first.location, latitude: point.latitude, longitude: point.longitude } } : null;
 }

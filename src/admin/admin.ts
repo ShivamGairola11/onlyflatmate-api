@@ -407,14 +407,14 @@ export class AdminController {
         `Couldn’t update the account: ${error.message}`,
         502,
       );
-    // Their listings come down with them; unbanning doesn't relist (the lister reconfirms).
-    if (banned)
-      await this.db
-        .updateTable('listings')
-        .set({ status: 'EXPIRED' })
-        .where('lister_id', '=', id)
-        .where('status', '=', 'ACTIVE')
-        .execute();
+    // Their listings come down with them (REMOVED, so they can't relist while banned). Unbanning returns
+    // them to EXPIRED: the lister reconfirms each one.
+    await this.db
+      .updateTable('listings')
+      .set({ status: banned ? 'REMOVED' : 'EXPIRED' })
+      .where('lister_id', '=', id)
+      .where('status', 'in', banned ? ['ACTIVE', 'EXPIRED', 'OCCUPIED'] : ['REMOVED'])
+      .execute();
     this.log.log(`${me.id} ${banned ? 'banned' : 'unbanned'} user ${id}`);
   }
 
@@ -820,7 +820,7 @@ export class AdminController {
     @Body() body: unknown,
   ) {
     const { status } = z
-      .object({ status: z.enum(['ACTIVE', 'EXPIRED', 'OCCUPIED']) })
+      .object({ status: z.enum(['ACTIVE', 'EXPIRED', 'OCCUPIED', 'REMOVED']) })
       .parse(body);
     const r = await this.db
       .updateTable('listings')

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LocationSuggestion } from '@/lib/api/contract';
-import { type CityId, cityOfRegion, type Region } from '@/lib/constants/places';
+import { type CityId, cityAt, cityOfRegion, type Region } from '@/lib/constants/places';
 import type { GeoLocation } from '@/types/common';
 import { sql } from 'kysely';
 import { latOf, lngOf, pointSql } from '../common/geo.js';
@@ -101,6 +101,8 @@ export class PlacesService {
     const m = CUSTOM_ID.exec(id);
     if (!m) return undefined;
     const point = { latitude: Number(m[1]), longitude: Number(m[2]) };
+    // Only places we serve: anything else is a typo or someone probing the router through us.
+    if (!cityAt(point)) return undefined;
     const near = await this.nearestLocality(point);
     const name = m[3]?.trim() || `Pin near ${near.name}`;
     return { id, name, shortName: name.length > 22 ? `${name.slice(0, 21)}…` : name, kind: 'CUSTOM', city: near.city, region: near.region, ...point };

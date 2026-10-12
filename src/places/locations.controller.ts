@@ -5,6 +5,7 @@ import { ApiError } from '../common/api-error.js';
 import { Public } from '../common/auth.js';
 import { geocode, reverseGeocode } from './photon.js';
 import { PlacesService } from './places.service.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 const q = z.string().trim().max(120);
 /** Optional metro to rank results towards; unknown values are ignored. */
@@ -15,12 +16,14 @@ export class LocationsController {
   constructor(private readonly places: PlacesService) {}
 
   @Public()
+  @RateLimit(120, 60)
   @Get('search')
   search(@Query('q') query: unknown, @Query('city') city: unknown) {
     return this.places.search(q.parse(query ?? ''), cityParam(city));
   }
 
   @Public()
+  @RateLimit(30, 60)
   @Get('geocode')
   async geocode(@Query('q') query: unknown, @Query('city') city: unknown) {
     try {
@@ -31,6 +34,7 @@ export class LocationsController {
   }
 
   @Public()
+  @RateLimit(30, 60)
   @Get('reverse')
   async reverse(@Query() query: unknown) {
     const { lat, lng } = z.object({ lat: z.coerce.number().min(-90).max(90), lng: z.coerce.number().min(-180).max(180) }).parse(query);

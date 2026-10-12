@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { belongsToCity, type CityId, getCity } from '@/lib/constants/places';
+import { belongsToCity, type CityId, getCity, localitiesIn } from '@/lib/constants/places';
 import { Body, Controller, Delete, Get, HttpCode, Injectable, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { sql } from 'kysely';
 import { z } from 'zod';
@@ -9,8 +9,11 @@ import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth
 import { assertNoContactInfo } from '../common/contact-info.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { ListingsService } from '../listings/listings.service.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 const DAY_MS = 86_400_000;
+/** Groups returned by one list call. */
+const MAX_LISTED = 100;
 const dateIso = (d: unknown) => (typeof d === 'string' ? `${d}T00:00:00.000Z` : new Date(d as Date).toISOString());
 const rupeesShort = (n: number) => `₹${n >= 1000 ? `${Math.round(n / 100) / 10}k` : n}`;
 /** Unambiguous characters only (no 0/O, 1/I). */
@@ -66,14 +69,31 @@ export class GroupsService {
     return g;
   }
 
-  /** The invite code is the key to join, so only members see it. */
+  /** Members see everything. Others don't get the invite code (the key to join) or members' account ids. */
   forViewer(g: FlatGroup, viewerId?: string): FlatGroup {
-    return viewerId && g.members.some((m) => m.userId === viewerId) ? g : { ...g, inviteCode: '' };
+    if (viewerId && g.members.some((m) => m.userId === viewerId)) return g;
+    return { ...g, inviteCode: '', members: g.members.map(({ userId: _hidden, ...m }) => m) };
   }
 
   /** Groups in the metro (by target areas), plus the viewer's own wherever they are; theirs first. */
   async list(viewerId?: string, city?: CityId) {
-    const groups = await this.load();
+    // Filter and cap in SQL: the newest groups in the city plus the viewer's own, never the whole table.
+    const slugs = city ? localitiesIn(city).map((l) => l.slug) : [];
+    const ids = await this.db
+      .selectFrom('groups as g')
+      .select('g.id')
+      .$if(!!city, (q) =>
+        q.where((eb) =>
+          eb.or([
+            sql<boolean>`g.areas && ${sql.val(slugs)}::text[]`,
+            ...(viewerId ? [eb.exists(eb.selectFrom('group_members as m').select('m.id').whereRef('m.group_id', '=', 'g.id').where('m.user_id', '=', viewerId))] : []),
+          ]),
+        ),
+      )
+      .orderBy('g.created_at', 'desc')
+      .limit(MAX_LISTED)
+      .execute();
+    const groups = await this.load(ids.map((r) => r.id));
     // Guard on viewerId: invited-but-not-joined members have no userId, so undefined === undefined would match.
     const mine = (g: FlatGroup) => (viewerId && g.members.some((m) => m.userId === viewerId) ? 1 : 0);
     return groups
@@ -202,14 +222,14 @@ export class GroupsService {
   }
 }
 
-const bhk = z.array(z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS'])).min(1);
+const bhk = z.array(z.enum(['1RK', '1BHK', '2BHK', '3BHK', '4BHK_PLUS'])).min(1).max(5);
 const budget = z.number().int().min(1000).max(200000);
 const updateInput = z.object({
   name: z.string().trim().min(3).max(60),
   bhk,
   areas: z.array(z.string().max(80)).min(1).max(8),
   totalBudget: z.number().int().min(5000).max(500000),
-  moveIn: z.string().min(10),
+  moveIn: z.iso.date().or(z.iso.datetime()),
   peopleNeeded: z.number().int().min(2).max(6),
   lifestyle: z.array(z.string().max(30)).max(14),
   note: z.string().trim().max(280).optional(),
@@ -227,11 +247,13 @@ export class GroupsController {
     return this.groups.list(user?.id, getCity(typeof city === 'string' ? city : undefined)?.id);
   }
 
+  @RateLimit(10, 3600)
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.groups.create(user.id, createInput.parse(body));
   }
 
+  @RateLimit(20, 3600)
   @Post('join')
   join(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const { inviteCode: code, budget: share } = z.object({ inviteCode: z.string().trim().min(4).max(12), budget }).parse(body);

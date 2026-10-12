@@ -4,10 +4,11 @@ import type { ListingSearchParams } from '@/features/listings/types';
 import { type AuthUser, CurrentUser, OptionalUser, Public } from '../common/auth.js';
 import { ApiError } from '../common/api-error.js';
 import { assertNoContactInfo } from '../common/contact-info.js';
-import { queryBool, queryList, queryNumber } from '../common/zod.js';
+import { queryList, queryNumber } from '../common/zod.js';
 import { ListingEditorService } from './listing-editor.service.js';
 import { listingInput, listingTexts } from './listing-input.js';
 import { ListingsService } from './listings.service.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 /** Parse a listing body and refuse contact details in any of its text. */
 const checkedListing = (body: unknown) => {
@@ -32,11 +33,10 @@ const searchQuery = z
     amenities: queryList(z.string().regex(/^[A-Z_]{2,30}$/)),
     gender: z.enum(['MALE', 'FEMALE', 'ANY']).optional(),
     moveIn: z.enum(['IMMEDIATE', '15_DAYS', '30_DAYS', 'CUSTOM']).optional(),
-    moveInDate: z.string().optional(),
+    moveInDate: z.iso.date().optional(),
     workplaceId: z.string().max(200).optional(),
     maxCommuteMinutes: queryNumber(),
     sort: z.enum(['RECOMMENDED', 'PRICE_ASC', 'PRICE_DESC', 'NEWEST', 'COMMUTE']).optional(),
-    includeInactive: queryBool(),
     cursor: z.string().max(40).optional(),
     limit: queryNumber(),
   })
@@ -55,18 +55,21 @@ export class ListingsController {
   ) {}
 
   @Public()
+  @RateLimit(60, 60)
   @Get()
   search(@Query() query: unknown, @OptionalUser() user?: AuthUser) {
     return this.listings.search(searchQuery.parse(query) as ListingSearchParams & { cursor?: string; limit?: number }, user?.id);
   }
 
   @Public()
+  @RateLimit(60, 60)
   @Get('pins')
   pins(@Query() query: unknown, @OptionalUser() user?: AuthUser) {
     return this.listings.pins(searchQuery.parse(query) as ListingSearchParams, user?.id);
   }
 
   @Public()
+  @RateLimit(30, 60)
   @Get('batch')
   batch(@Query('ids') ids: unknown) {
     return this.listings.getMany(idList.parse(ids));
@@ -83,12 +86,14 @@ export class ListingsController {
     return this.listings.get(id, user?.id);
   }
 
+  @RateLimit(10, 3600)
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.editor.create(user.id, checkedListing(body));
   }
 
   /** Paste a social-media post; get a draft back. Signed in, to keep scrapers off it. */
+  @RateLimit(20, 3600)
   @Post('import')
   import(@Body() body: unknown) {
     return this.editor.importFromText(z.object({ text: z.string().trim().min(20, 'Paste the whole post').max(5000) }).parse(body).text);

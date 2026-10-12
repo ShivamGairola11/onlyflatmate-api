@@ -8,6 +8,7 @@ import { type AuthUser, CurrentUser } from '../common/auth.js';
 import { sendEmail } from '../common/email.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 export const ID_BUCKET = 'id-documents';
 const ID_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' } as const;
@@ -51,7 +52,8 @@ export class VerificationsService {
 
   /** Queues the uploaded ID for admin review. Replaces (and deletes) an earlier pending upload. */
   async submitIdentity(userId: string, path: string, documentType: string): Promise<Verification> {
-    if (!path.startsWith(`${userId}/`)) throw invalid('That upload doesn’t belong to you.');
+    // Exactly the shape our upload ticket issues: the caller's folder, a uuid, a known extension. No `..`, no other folders.
+    if (!new RegExp(`^${userId}/[0-9a-f-]{36}\\.(jpg|png|webp|pdf)$`).test(path)) throw invalid('That upload doesn’t belong to you.');
     const folder = path.slice(0, path.lastIndexOf('/'));
     const { data: files } = await this.storage.list(folder, { search: path.slice(path.lastIndexOf('/') + 1) });
     if (!files?.length) throw new ApiError('VALIDATION', 'The file hasn’t finished uploading.', 409);
@@ -73,26 +75,43 @@ export class VerificationsService {
     const domain = email.split('@')[1]!.toLowerCase();
     if (FREE_MAIL.has(domain)) throw invalid('Use your company email, not a personal one.');
 
-    const pending = await this.db.selectFrom('work_email_codes').select('sent_at').where('user_id', '=', userId).executeTakeFirst();
-    if (pending && Date.now() - new Date(pending.sent_at).getTime() < RESEND_AFTER_MS) throw new ApiError('RATE_LIMITED', 'A code was just sent. Wait a minute before asking for another.', 429);
-
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const expiresAt = new Date(Date.now() + CODE_TTL_MS);
-    await this.deliver(email, code);
     const values = { domain, code_hash: hashCode(userId, code).toString('hex'), expires_at: expiresAt, attempts: 0, sent_at: new Date() };
-    await this.db
+    // Claim the send slot in one statement (insert, or replace a code older than a minute) before emailing,
+    // so parallel requests can't each send a mail.
+    const claimed = await this.db
       .insertInto('work_email_codes')
       .values({ user_id: userId, ...values })
-      .onConflict((oc) => oc.column('user_id').doUpdateSet(values))
-      .execute();
+      .onConflict((oc) => oc.column('user_id').doUpdateSet(values).where('work_email_codes.sent_at', '<', new Date(Date.now() - RESEND_AFTER_MS)))
+      .returning('user_id')
+      .executeTakeFirst();
+    if (!claimed) throw new ApiError('RATE_LIMITED', 'A code was just sent. Wait a minute before asking for another.', 429);
+    try {
+      await this.deliver(email, code);
+    } catch (e) {
+      // Not sent: free the slot so they can try again straight away.
+      await this.db.deleteFrom('work_email_codes').where('user_id', '=', userId).execute();
+      throw e;
+    }
     return { domain, expiresAt: expiresAt.toISOString() };
   }
 
   async confirmWorkCode(userId: string, code: string): Promise<Verification> {
-    const pending = await this.db.selectFrom('work_email_codes').selectAll().where('user_id', '=', userId).executeTakeFirst();
-    if (!pending || new Date(pending.expires_at) < new Date()) throw new ApiError('OTP_EXPIRED', 'That code has expired. Request a new one.', 410);
-    if (pending.attempts >= MAX_ATTEMPTS) throw new ApiError('RATE_LIMITED', 'Too many attempts. Request a new code.', 429);
-    await this.db.updateTable('work_email_codes').set({ attempts: pending.attempts + 1 }).where('user_id', '=', userId).execute();
+    // Count the attempt and read the code in one statement, so parallel guesses can't share one "attempts" read.
+    const pending = await this.db
+      .updateTable('work_email_codes')
+      .set((eb) => ({ attempts: eb('attempts', '+', 1) }))
+      .where('user_id', '=', userId)
+      .where('attempts', '<', MAX_ATTEMPTS)
+      .where('expires_at', '>', new Date())
+      .returningAll()
+      .executeTakeFirst();
+    if (!pending) {
+      const exists = await this.db.selectFrom('work_email_codes').select(['attempts', 'expires_at']).where('user_id', '=', userId).executeTakeFirst();
+      if (exists && new Date(exists.expires_at) > new Date()) throw new ApiError('RATE_LIMITED', 'Too many attempts. Request a new code.', 429);
+      throw new ApiError('OTP_EXPIRED', 'That code has expired. Request a new one.', 410);
+    }
     if (!timingSafeEqual(Buffer.from(pending.code_hash, 'hex'), hashCode(userId, code))) throw new ApiError('OTP_INVALID', 'That code isn’t right. Check your work inbox and try again.', 401);
 
     const row = await this.db.transaction().execute(async (trx) => {
@@ -124,6 +143,7 @@ export class VerificationsService {
 export class VerificationsController {
   constructor(private readonly verifications: VerificationsService) {}
 
+  @RateLimit(10, 3600)
   @Post('identity/upload')
   identityUpload(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const { contentType, sizeBytes } = z
@@ -133,18 +153,21 @@ export class VerificationsController {
     return this.verifications.identityUpload(user.id, contentType);
   }
 
+  @RateLimit(10, 3600)
   @Post('identity')
   submitIdentity(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const { path, documentType } = z.object({ path: z.string().max(200), documentType: z.enum(['AADHAAR', 'PAN', 'DRIVING_LICENCE', 'PASSPORT', 'VOTER_ID']) }).parse(body);
     return this.verifications.submitIdentity(user.id, path, documentType);
   }
 
+  @RateLimit(5, 3600)
   @Post('workplace/send')
   sendWorkCode(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const { email } = z.object({ email: z.email('Enter your work email address.').max(254) }).parse(body);
     return this.verifications.sendWorkCode(user.id, email.trim());
   }
 
+  @RateLimit(20, 3600)
   @Post('workplace/confirm')
   @HttpCode(200)
   confirmWorkCode(@CurrentUser() user: AuthUser, @Body() body: unknown) {

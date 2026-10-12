@@ -8,9 +8,13 @@ import { assertNoContactInfo } from '../common/contact-info.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { ListingsService } from '../listings/listings.service.js';
 import { EventsService } from './events.js';
+import { RateLimit } from '../common/rate-limit.js';
 
 const BHK_TEXT: Record<string, string> = { '1RK': '1 RK', '1BHK': '1 BHK', '2BHK': '2 BHK', '3BHK': '3 BHK', '4BHK_PLUS': '4+ BHK' };
 const TYPE_TEXT: Record<string, string> = { PRIVATE_ROOM: 'Private room', SHARED_ROOM: 'Shared room', ENTIRE_FLAT: 'Entire flat', FLATMATE_VACANCY: 'Flatmate vacancy', PG: 'PG' };
+/** Per request: the newest conversations in the inbox, and the newest messages in a thread. */
+const MAX_CONVERSATIONS = 100;
+const MAX_MESSAGES = 500;
 const short = (n: number) => `₹${Math.round(n / 100) / 10}k`;
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : undefined);
 
@@ -98,7 +102,14 @@ export class MessagingService {
   }
 
   async list(userId: string) {
-    const ids = await this.db.selectFrom('conversation_participants').select('conversation_id').where('user_id', '=', userId).execute();
+    const ids = await this.db
+      .selectFrom('conversation_participants as cp')
+      .innerJoin('conversations as c', 'c.id', 'cp.conversation_id')
+      .select('cp.conversation_id')
+      .where('cp.user_id', '=', userId)
+      .orderBy('c.updated_at', 'desc')
+      .limit(MAX_CONVERSATIONS)
+      .execute();
     return this.load(userId, ids.map((r) => r.conversation_id));
   }
 
@@ -113,7 +124,10 @@ export class MessagingService {
 
   async messages(id: string, userId: string) {
     await this.assertParticipant(id, userId);
-    const rows = (await this.db.selectFrom('messages').selectAll().where('conversation_id', '=', id).orderBy('sent_at').execute()).map(toMessage);
+    // The latest MAX_MESSAGES, oldest first: a thread can't make one request return unbounded rows.
+    const rows = (await this.db.selectFrom('messages').selectAll().where('conversation_id', '=', id).orderBy('sent_at', 'desc').limit(MAX_MESSAGES).execute())
+      .reverse()
+      .map(toMessage);
     if ((await this.roleIn(id, userId)) !== 'SEEKER') return rows;
     return rows.map(lockFor(userId, await this.lapsedAt(userId)));
   }
@@ -131,7 +145,7 @@ export class MessagingService {
     if (type === 'FLATMATE') {
       const f = await this.db.selectFrom('flatmate_profiles as f').innerJoin('profiles as p', 'p.user_id', 'f.user_id').select(['f.user_id', 'f.budget_min', 'f.budget_max', 'p.display_name', 'p.age', 'p.profession']).where('f.id', '=', id).executeTakeFirst();
       if (!f) throw notFound('Profile not found');
-      return { counterpartId: f.user_id, context: { type, id, title: f.display_name, subtitle: `${f.age ?? ''} · ${f.profession} · ${short(f.budget_min)}–${short(f.budget_max).slice(1)}` } };
+      return { counterpartId: f.user_id, context: { type, id, title: f.display_name.split(' ')[0] || 'Member', subtitle: `${f.age ?? ''} · ${f.profession} · ${short(f.budget_min)}–${short(f.budget_max).slice(1)}` } };
     }
     const g = await this.db.selectFrom('groups').select(['owner_id', 'name', 'people_needed', sql<string>`(select count(*) from group_members m where m.group_id = groups.id)`.as('members')]).where('id', '=', id).executeTakeFirst();
     if (!g) throw notFound('Group not found');
@@ -233,6 +247,7 @@ export class MessagingController {
     return this.messaging.unreadCount(user.id);
   }
 
+  @RateLimit(10, 60)
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.messaging.create(user.id, createInput.parse(body));
@@ -248,6 +263,7 @@ export class MessagingController {
     return this.messaging.messages(id, user.id);
   }
 
+  @RateLimit(30, 60)
   @Post(':id/messages')
   send(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: unknown) {
     return this.messaging.send(id, user.id, z.object({ body: z.string().max(2000) }).parse(body).body);
