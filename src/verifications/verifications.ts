@@ -1,10 +1,11 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
-import { Body, Controller, HttpCode, Injectable, Logger, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Injectable, Post } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import type { Verification } from '@/features/profiles/types';
 import { ApiError, invalid } from '../common/api-error.js';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
+import { sendEmail } from '../common/email.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 
@@ -36,7 +37,6 @@ export const toVerification = (v: Row): Verification => ({
 
 @Injectable()
 export class VerificationsService {
-  private readonly log = new Logger('Verifications');
   private readonly storage = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }).storage.from(ID_BUCKET);
 
   constructor(@InjectDb() private readonly db: Database) {}
@@ -110,23 +110,13 @@ export class VerificationsService {
 
   /** Sends the code through Resend. Without a key, local development prints it to the log instead. */
   private async deliver(email: string, code: string) {
-    if (!config.RESEND_API_KEY) {
-      if (process.env.NODE_ENV === 'production') throw new ApiError('UNKNOWN', 'Work email verification isn’t available yet.', 503);
-      this.log.warn(`[dev] Work email code for ${email}: ${code} (set RESEND_API_KEY to send real emails)`);
-      return;
-    }
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${config.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: config.EMAIL_FROM,
-        to: [email],
-        subject: `${code} is your FindFlatmates verification code`,
-        text: `Your code is ${code}. It expires in 10 minutes.\n\nEnter it on your FindFlatmates profile to verify where you work. If you didn't ask for this, you can ignore this email.`,
-      }),
-      signal: AbortSignal.timeout(8000),
-    }).catch(() => undefined);
-    if (!res?.ok) throw new ApiError('UNKNOWN', 'We couldn’t send the email right now. Try again shortly.', 502);
+    if (!config.RESEND_API_KEY && process.env.NODE_ENV === 'production') throw new ApiError('UNKNOWN', 'Work email verification isn’t available yet.', 503);
+    const sent = await sendEmail(
+      email,
+      `${code} is your FindFlatmates verification code`,
+      `Your code is ${code}. It expires in 10 minutes.\n\nEnter it on your FindFlatmates profile to verify where you work. If you didn't ask for this, you can ignore this email.`,
+    );
+    if (!sent) throw new ApiError('UNKNOWN', 'We couldn’t send the email right now. Try again shortly.', 502);
   }
 }
 

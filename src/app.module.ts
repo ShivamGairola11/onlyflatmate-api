@@ -25,6 +25,7 @@ import {
   MessagingService,
 } from './messaging/messaging.js';
 import { PaymentsController } from './payments/payments.js';
+import { PassRemindersService } from './payments/pass-reminders.js';
 import { LocationsController } from './places/locations.controller.js';
 import { PlacesService } from './places/places.service.js';
 import { SafetyController } from './safety/safety.js';
@@ -83,6 +84,7 @@ class HealthController {
     AdminGuard,
     VerificationsService,
     AvatarService,
+    PassRemindersService,
     // Signed-in by default; routes opt out with @Public().
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

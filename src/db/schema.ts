@@ -36,6 +36,7 @@ export interface ContactPasses {
   expires_at: Timestamp;
   id: Generated<string>;
   payment_id: string;
+  reminder_sent_at: Timestamp | null;
   starts_at: Generated<Timestamp>;
   user_id: string;
 }

@@ -10,6 +10,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { sql } from 'kysely';
 import Razorpay from 'razorpay';
 import {
   validatePaymentVerification,
@@ -250,14 +251,21 @@ export function grantPass(
       })
       .where('id', '=', payment.id)
       .execute();
-    const now = new Date();
+    // Renewing early stacks: the new pass starts when the current one ends, so no paid days are lost.
+    // (greatest() skips the null from a user with no passes.)
+    const { from } = await trx
+      .selectFrom('contact_passes')
+      .select(sql<Date>`greatest(max(expires_at), now())`.as('from'))
+      .where('user_id', '=', payment.user_id)
+      .executeTakeFirstOrThrow();
+    const startsAt = new Date(from);
     await trx
       .insertInto('contact_passes')
       .values({
         user_id: payment.user_id,
         payment_id: payment.id,
-        starts_at: now,
-        expires_at: new Date(now.getTime() + days * 86_400_000),
+        starts_at: startsAt,
+        expires_at: new Date(startsAt.getTime() + days * 86_400_000),
       })
       .onConflict((oc) => oc.column('payment_id').doNothing())
       .execute();
