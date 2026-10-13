@@ -36,7 +36,8 @@ insert into public.localities (slug, name, city, region, point, radius_km, neare
   ('noida-sector-75', 'Sector 75, Noida', 'Noida', 'NOIDA', extensions.st_setsrid(extensions.st_makepoint(77.383, 28.576), 4326)::extensions.geography, 1.2, null),
   ('noida-sector-137', 'Sector 137, Noida', 'Noida', 'NOIDA', extensions.st_setsrid(extensions.st_makepoint(77.403, 28.51), 4326)::extensions.geography, 1.4, 'Noida Sector 137'),
   ('indirapuram', 'Indirapuram', 'Ghaziabad', 'GHAZIABAD', extensions.st_setsrid(extensions.st_makepoint(77.37, 28.64), 4326)::extensions.geography, 1.8, null),
-  ('vaishali', 'Vaishali', 'Ghaziabad', 'GHAZIABAD', extensions.st_setsrid(extensions.st_makepoint(77.34, 28.645), 4326)::extensions.geography, 1.4, 'Vaishali');
+  ('vaishali', 'Vaishali', 'Ghaziabad', 'GHAZIABAD', extensions.st_setsrid(extensions.st_makepoint(77.34, 28.645), 4326)::extensions.geography, 1.4, 'Vaishali')
+on conflict (slug) do nothing;
 
 insert into public.landmarks (id, name, short_name, kind, city, region, point) values
   ('cyber-city', 'DLF Cyber City, Gurugram', 'Cyber City', 'WORKPLACE', 'Gurugram', 'GURUGRAM', extensions.st_setsrid(extensions.st_makepoint(77.089, 28.495), 4326)::extensions.geography),
@@ -52,7 +53,8 @@ insert into public.landmarks (id, name, short_name, kind, city, region, point) v
   ('du-north-campus', 'Delhi University North Campus', 'DU North Campus', 'COLLEGE', 'New Delhi', 'DELHI_NORTH', extensions.st_setsrid(extensions.st_makepoint(77.209, 28.688), 4326)::extensions.geography),
   ('jnu', 'Jawaharlal Nehru University', 'JNU', 'COLLEGE', 'New Delhi', 'DELHI_SOUTH', extensions.st_setsrid(extensions.st_makepoint(77.1662, 28.5402), 4326)::extensions.geography),
   ('nsut', 'NSUT, Dwarka', 'NSUT', 'COLLEGE', 'New Delhi', 'DELHI_WEST', extensions.st_setsrid(extensions.st_makepoint(77.037, 28.609), 4326)::extensions.geography),
-  ('amity-noida', 'Amity University, Noida', 'Amity Noida', 'COLLEGE', 'Noida', 'NOIDA', extensions.st_setsrid(extensions.st_makepoint(77.333, 28.544), 4326)::extensions.geography);
+  ('amity-noida', 'Amity University, Noida', 'Amity Noida', 'COLLEGE', 'Noida', 'NOIDA', extensions.st_setsrid(extensions.st_makepoint(77.333, 28.544), 4326)::extensions.geography)
+on conflict (id) do nothing;
 
 insert into auth.users (instance_id, id, aud, role, phone, phone_confirmed_at, encrypted_password, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change, phone_change, phone_change_token, email_change_token_current, reauthentication_token) values
   ('00000000-0000-0000-0000-000000000000', '68486ed1-5802-4365-a023-eec50b9d4d18', 'authenticated', 'authenticated', '919000010000', now() - interval '2592000 seconds', '', '{"provider":"phone","providers":["phone"]}'::jsonb, '{"full_name":"Rahul Sharma"}'::jsonb, now() - interval '2592000 seconds', now() - interval '2592000 seconds', '', '', '', '', '', '', '', ''),
