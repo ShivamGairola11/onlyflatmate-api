@@ -124,6 +124,7 @@ export interface ListingPhotos {
   listing_id: string;
   photo_id: string;
   position: number;
+  area: Generated<string | null>;
 }
 
 export interface ListingPrivateLocations {

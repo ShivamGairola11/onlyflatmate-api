@@ -1,5 +1,5 @@
 // Synced from the web app (src/lib/constants/labels.ts) by scripts/sync-contract.mjs — do not edit here.
-import type { Amenity, BuildingType, ListingStatus, ListingType, MoveInWindow } from "@/features/listings/types";
+import type { Amenity, BuildingType, ListingStatus, ListingType, MoveInWindow, PhotoArea } from "@/features/listings/types";
 import type {
   BHK,
   Furnishing,
@@ -94,6 +94,17 @@ export const AMENITY_LABEL: Record<Amenity, string> = {
   MICROWAVE: "Microwave",
   SWIMMING_POOL: "Swimming pool",
 };
+
+export const PHOTO_AREA_LABEL: Record<PhotoArea, string> = {
+  BEDROOM: "Bedroom",
+  BATHROOM: "Bathroom",
+  BALCONY: "Balcony",
+  KITCHEN: "Kitchen",
+  LIVING: "Living room",
+  BUILDING: "Building & outside",
+};
+
+export const PHOTO_AREAS = Object.keys(PHOTO_AREA_LABEL) as PhotoArea[];
 
 export const AMENITY_OPTIONS = Object.keys(AMENITY_LABEL) as Amenity[];
 

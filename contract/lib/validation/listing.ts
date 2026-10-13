@@ -1,10 +1,10 @@
 // Synced from the web app (src/lib/validation/listing.ts) by scripts/sync-contract.mjs — do not edit here.
 import { z } from "zod";
-import type { Amenity, BuildingType, ListingType } from "@/features/listings/types";
+import type { Amenity, BuildingType, ListingType, PhotoArea } from "@/features/listings/types";
 import type { BHK, Furnishing, LifestyleTag } from "@/types/common";
 import { CITIES, cityAt } from "@/lib/constants/places";
 import { CONTACT_INFO_MESSAGE, findContactInfo } from "./contact-info";
-import { AMENITY_OPTIONS, BHK_OPTIONS, BUILDING_TYPE_OPTIONS, FURNISHING_OPTIONS, LIFESTYLE_OPTIONS, LISTING_TYPES } from "@/lib/constants/labels";
+import { AMENITY_OPTIONS, BHK_OPTIONS, PHOTO_AREAS, BUILDING_TYPE_OPTIONS, FURNISHING_OPTIONS, LIFESTYLE_OPTIONS, LISTING_TYPES } from "@/lib/constants/labels";
 
 type Tuple<T extends string> = [T, ...T[]];
 
@@ -14,6 +14,12 @@ const furnishing = z.enum(FURNISHING_OPTIONS as Tuple<Furnishing>, { error: "Say
 const buildingType = z.enum(BUILDING_TYPE_OPTIONS as Tuple<BuildingType>, { error: "Choose the type of building" });
 const amenity = z.enum(AMENITY_OPTIONS as Tuple<Amenity>);
 const lifestyle = z.enum(LIFESTYLE_OPTIONS as Tuple<LifestyleTag>);
+const photoArea = z.enum(PHOTO_AREAS as Tuple<PhotoArea>);
+
+export const MAX_PHOTOS = 15;
+
+/** Listings that rent out a room (not the whole flat): renters ask about its bathroom and balcony first. */
+export const isRoomListing = (type?: ListingType) => !!type && type !== "ENTIRE_FLAT";
 /** Free text people write: never a phone number or email (the API enforces the same). */
 const noContact = <T extends z.ZodType<string | undefined>>(s: T) => s.refine((t) => !findContactInfo(t), CONTACT_INFO_MESSAGE);
 
@@ -49,6 +55,9 @@ export const listingDraftSchema = z
     bathrooms: z.number({ error: "Pick the number of bathrooms" }).int().min(1, "Pick the number of bathrooms").max(6),
     furnishing,
     amenities: z.array(amenity),
+    /** Room listings only: does the room have its own bathroom and balcony? */
+    roomBathroom: z.enum(["ATTACHED", "SHARED"]).optional(),
+    roomBalcony: z.boolean().optional(),
     rent: z.number({ error: "Enter the monthly rent" }).int().min(2000, "Rent looks too low").max(300000, "Rent looks too high"),
     deposit: z.number({ error: "Enter a deposit (0 if none)" }).int().min(0).max(1000000),
     maintenance: z.number({ error: "Enter maintenance (0 if none)" }).int().min(0).max(50000),
@@ -72,7 +81,9 @@ export const listingDraftSchema = z
     lifestyle: z.array(lifestyle),
     preferenceNote: noContact(z.string().trim().max(300, "Keep it under 300 characters").optional()),
     availableFrom: z.string().min(1, "Pick a date"),
-    photos: z.array(z.string()).max(8),
+    photos: z.array(z.string()).max(MAX_PHOTOS),
+    /** Same order as `photos`; null for photos added before areas existed. */
+    photoAreas: z.array(photoArea.nullable()).max(MAX_PHOTOS).optional(),
     description: noContact(z.string().max(1000).optional()),
   })
   .refine((d) => !!d.exactLocation, { path: ["exactLocation"], message: "Drop a pin or search for your location" })
@@ -80,6 +91,8 @@ export const listingDraftSchema = z
     path: ["buildingTypeOther"],
     message: "Describe the building, e.g. CGHS society",
   })
+  .refine((d) => !isRoomListing(d.type) || !!d.roomBathroom, { path: ["roomBathroom"], message: "Say whether the room has its own bathroom" })
+  .refine((d) => !isRoomListing(d.type) || d.roomBalcony !== undefined, { path: ["roomBalcony"], message: "Say whether the room has a balcony" })
   .refine((d) => !d.hasBrokerage || (Number.isFinite(d.brokerage) && (d.brokerage ?? 0) >= 1), {
     path: ["brokerage"],
     message: "Enter the brokerage amount",

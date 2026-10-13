@@ -238,7 +238,8 @@ export interface AdminPass {
   complimentary: boolean;
 }
 
-export type AdminListingStatus = "ACTIVE" | "EXPIRED" | "OCCUPIED";
+/** REMOVED: taken down by moderators — hidden from everyone but the lister, who can't relist it. */
+export type AdminListingStatus = "ACTIVE" | "EXPIRED" | "OCCUPIED" | "REMOVED";
 
 export interface AdminListing {
   id: ID;

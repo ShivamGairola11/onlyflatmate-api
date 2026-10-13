@@ -109,10 +109,15 @@ export interface ListingPricing {
   extras?: ExtraCharge[];
 }
 
+/** Which part of the home a photo shows. The gallery and the room summary group photos by it. */
+export type PhotoArea = "BEDROOM" | "BATHROOM" | "BALCONY" | "KITCHEN" | "LIVING" | "BUILDING";
+
 export interface ListingPhoto {
   id: ID;
   url: string;
   caption?: string;
+  /** Older listings and imports have none. */
+  area?: PhotoArea;
 }
 
 /**
@@ -210,6 +215,8 @@ export interface CreateListingInput {
   preference: FlatmatePreference;
   availableFrom: ISODateString;
   photos: string[];
+  /** Same order as `photos`: the area each one shows (null when unknown). */
+  photoAreas?: (PhotoArea | null)[];
   title?: string;
   description?: string;
   source?: ListingSource;

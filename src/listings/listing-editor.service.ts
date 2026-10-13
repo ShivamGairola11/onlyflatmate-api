@@ -84,10 +84,10 @@ export class ListingEditorService {
     };
   }
 
-  private async setPhotos(trx: Transaction<AppDB>, listingId: string, userId: string, urls: string[]) {
+  private async setPhotos(trx: Transaction<AppDB>, listingId: string, userId: string, urls: string[], areas: (string | null)[] = []) {
     const ids = await this.photoIds(trx, userId, urls);
     await trx.deleteFrom('listing_photos').where('listing_id', '=', listingId).execute();
-    if (ids.length) await trx.insertInto('listing_photos').values(ids.map((photo_id, position) => ({ listing_id: listingId, photo_id, position }))).execute();
+    if (ids.length) await trx.insertInto('listing_photos').values(ids.map((photo_id, position) => ({ listing_id: listingId, photo_id, position, area: areas[position] ?? null }))).execute();
   }
 
   async create(userId: string, input: ListingInput): Promise<Listing> {
@@ -99,7 +99,7 @@ export class ListingEditorService {
         .values({ id, lister_id: userId, source: input.source ?? 'PLATFORM', public_point: fuzzedPointSql(input.exactLocation, PRIVACY_RADIUS_M), location_precision_m: PRIVACY_RADIUS_M, ...cols })
         .execute();
       await trx.insertInto('listing_private_locations').values({ listing_id: id, exact_point: pointSql(input.exactLocation), address_line: input.addressLine }).execute();
-      await this.setPhotos(trx, id, userId, input.photos);
+      await this.setPhotos(trx, id, userId, input.photos, input.photoAreas);
       await trx.updateTable('profiles').set({ mode: 'OFFERING' }).where('user_id', '=', userId).execute();
     });
     return (await this.listings.getMany([id], true))[0];
@@ -134,7 +134,7 @@ export class ListingEditorService {
         .values({ listing_id: id, exact_point: pointSql(input.exactLocation), address_line: input.addressLine })
         .onConflict((oc) => oc.column('listing_id').doUpdateSet({ exact_point: pointSql(input.exactLocation), address_line: input.addressLine ?? null }))
         .execute();
-      await this.setPhotos(trx, id, userId, input.photos);
+      await this.setPhotos(trx, id, userId, input.photos, input.photoAreas);
     });
     return (await this.listings.getMany([id], true))[0];
   }

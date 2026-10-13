@@ -92,11 +92,11 @@ export class ListingsService {
     const rows = await this.db
       .selectFrom('listing_photos as lp')
       .innerJoin('photos as p', 'p.id', 'lp.photo_id')
-      .select(['lp.listing_id', 'p.id', 'p.url'])
+      .select(['lp.listing_id', 'p.id', 'p.url', 'lp.area'])
       .where('lp.listing_id', 'in', ids)
       .orderBy('lp.position')
       .execute();
-    for (const r of rows) out.set(r.listing_id, [...(out.get(r.listing_id) ?? []), { id: r.id, url: r.url }]);
+    for (const r of rows) out.set(r.listing_id, [...(out.get(r.listing_id) ?? []), { id: r.id, url: r.url, area: (r.area as ListingPhoto['area']) ?? undefined }]);
     return out;
   }
 

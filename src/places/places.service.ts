@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { LocationSuggestion } from '@/lib/api/contract';
-import { type CityId, cityAt, cityOfRegion, type Region } from '@/lib/constants/places';
+import { type CityId, cityAt, cityOfRegion, localitiesIn, type Region } from '@/lib/constants/places';
+import { distanceKm } from '@/lib/utils/geo';
 import type { GeoLocation } from '@/types/common';
 import { sql } from 'kysely';
 import { latOf, lngOf, pointSql } from '../common/geo.js';
@@ -53,6 +54,7 @@ const normalise = (s: string) =>
  */
 @Injectable()
 export class PlacesService {
+  private readonly log = new Logger('Places');
   private loaded?: Promise<{ localities: Locality[]; landmarks: Destination[] }>;
 
   constructor(@InjectDb() private readonly db: Database) {}
@@ -89,8 +91,16 @@ export class PlacesService {
     return new Map(rows.map((r) => [r.id, { locality: bySlug.get(r.slug)!, km: Number(r.km) }]));
   }
 
+  /**
+   * Never a locality from another metro: if the table is missing the point's city (its migration not
+   * applied yet), a Dwarka pin would otherwise be labelled Ahmedabad. Falls back to the contract's list.
+   */
   async nearestLocality(point: GeoLocation): Promise<Locality> {
-    return (await this.nearest([{ id: '', location: point }], point)).get('')!.locality;
+    const near = (await this.nearest([{ id: '', location: point }], point)).get('')!.locality;
+    const city = cityAt(point);
+    if (!city || cityOfRegion(near.region as Region) === city.id) return near;
+    this.log.warn(`No ${city.id} localities in the database; labelling the point from the contract list`);
+    return localitiesIn(city.id).reduce((best, l) => (distanceKm(point, l) < distanceKm(point, best) ? l : best));
   }
 
   async resolveDestination(id: string | undefined): Promise<Destination | undefined> {

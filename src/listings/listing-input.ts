@@ -54,7 +54,9 @@ export const listingInput = z
       note: z.string().trim().max(300).optional(),
     }),
     availableFrom: z.iso.datetime().or(z.iso.date()),
-    photos: z.array(z.url()).max(8),
+    photos: z.array(z.url()).max(15),
+    /** Same order as `photos`. */
+    photoAreas: z.array(z.enum(['BEDROOM', 'BATHROOM', 'BALCONY', 'KITCHEN', 'LIVING', 'BUILDING']).nullable()).max(15).optional(),
     title: z.string().trim().max(120).optional(),
     description: z.string().trim().max(1000).optional(),
     source: z.enum(['PLATFORM', 'FACEBOOK_IMPORT']).optional(),
