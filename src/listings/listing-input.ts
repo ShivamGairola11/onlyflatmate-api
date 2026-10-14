@@ -30,7 +30,8 @@ export const listingInput = z
       floor: z.number().int().min(-2).max(100).optional(),
       totalFloors: z.number().int().min(1).max(100).optional(),
       areaSqft: z.number().int().min(50).max(20000).optional(),
-      amenities: z.array(z.string().max(30)).max(20),
+      // Known amenity codes, or the lister's own words ("Basketball court").
+      amenities: z.array(z.string().trim().min(2).max(30)).max(20),
     }),
     room: z.object({ hasAttachedBathroom: z.boolean(), hasBalcony: z.boolean(), isAirConditioned: z.boolean(), occupancy: z.union([z.literal(1), z.literal(2), z.literal(3)]) }).optional(),
     pricing: z.object({
