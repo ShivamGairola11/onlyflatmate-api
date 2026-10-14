@@ -61,7 +61,8 @@ export const listingInput = z
     description: z.string().trim().max(1000).optional(),
     source: z.enum(['PLATFORM', 'FACEBOOK_IMPORT']).optional(),
   })
-  .refine((d) => d.property.buildingType !== 'OTHER' || (d.property.buildingTypeOther?.length ?? 0) >= 2, { path: ['property', 'buildingTypeOther'], message: 'Describe the building' });
+  .refine((d) => d.property.buildingType !== 'OTHER' || (d.property.buildingTypeOther?.length ?? 0) >= 2, { path: ['property', 'buildingTypeOther'], message: 'Describe the building' })
+  .refine((d) => d.property.floor == null || d.property.totalFloors == null || d.property.floor <= d.property.totalFloors, { path: ['property', 'floor'], message: 'The floor can’t be above the top floor' });
 
 export type ListingInput = z.infer<typeof listingInput>;
 

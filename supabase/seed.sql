@@ -964,4 +964,7 @@ insert into public.payments (id, user_id, amount, currency, provider, provider_o
 insert into public.contact_passes (id, user_id, payment_id, starts_at, expires_at) values
   ('a00ca0f7-39d3-47c5-a530-eb52fb3a2907', '953e324a-61b4-4652-a012-662aa51adcaa', 'fce816a7-9dff-4589-aae0-16511b50f97a', now() - interval '777600 seconds', now() - interval '172800 seconds');
 
+-- Older generated rows put some flats above the building's top floor (the generator now caps it).
+update public.listings set floor = total_floors where floor > total_floors;
+
 commit;
