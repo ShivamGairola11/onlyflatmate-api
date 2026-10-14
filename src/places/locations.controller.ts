@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getCity } from '@/lib/constants/places';
 import { ApiError } from '../common/api-error.js';
 import { Public } from '../common/auth.js';
-import { geocode, reverseGeocode } from './photon.js';
+import { geocode, reverseGeocode } from './geoapify.js';
 import { PlacesService } from './places.service.js';
 import { RateLimit } from '../common/rate-limit.js';
 

@@ -16,8 +16,8 @@ const schema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   /** Local / legacy projects sign tokens with this (HS256). Cloud projects use the JWKS instead. */
   SUPABASE_JWT_SECRET: z.string().optional(),
-  /** Photon-compatible geocoder (address search, reverse lookup). */
-  GEOCODER_URL: z.url().default('https://photon.komoot.io'),
+  /** Geoapify key for address search and reverse lookup (geoapify.com). Without it, address search answers 503. */
+  GEOAPIFY_API_KEY: z.string().optional(),
   /** OSRM-compatible routers, comma-separated, tried in order. Public ones stall now and then. */
   ROUTER_URLS: z
     .string()
