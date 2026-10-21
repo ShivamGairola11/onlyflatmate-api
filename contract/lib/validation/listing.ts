@@ -54,7 +54,8 @@ export const listingDraftSchema = z
     buildingTypeOther: noContact(z.string().trim().max(60, "Keep it under 60 characters").optional()),
     bathrooms: z.number({ error: "Pick the number of bathrooms" }).int().min(1, "Pick the number of bathrooms").max(6),
     furnishing,
-    amenities: z.array(amenity),
+    // Known amenities, plus the lister's own ("Basketball court").
+    amenities: z.array(z.union([amenity, noContact(z.string().trim().min(2, "Too short").max(30, "Keep it under 30 characters"))])).max(20, "Up to 20 amenities"),
     /** Room listings only: does the room have its own bathroom and balcony? */
     roomBathroom: z.enum(["ATTACHED", "SHARED"]).optional(),
     roomBalcony: z.boolean().optional(),

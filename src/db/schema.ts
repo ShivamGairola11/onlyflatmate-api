@@ -32,6 +32,16 @@ export interface Blocks {
   id: Generated<string>;
 }
 
+export interface ContactMessages {
+  created_at: Generated<Timestamp>;
+  email: string;
+  id: Generated<string>;
+  message: string;
+  name: string;
+  topic: string;
+  user_id: string | null;
+}
+
 export interface ContactPasses {
   expires_at: Timestamp;
   id: Generated<string>;
@@ -283,6 +293,7 @@ export interface WorkEmailCodes {
 
 export interface DB {
   blocks: Blocks;
+  contact_messages: ContactMessages;
   contact_passes: ContactPasses;
   conversation_participants: ConversationParticipants;
   conversations: Conversations;

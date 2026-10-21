@@ -43,6 +43,9 @@ export type Amenity =
   | "MICROWAVE"
   | "SWIMMING_POOL";
 
+/** A known amenity, or the lister's own words for one we don't list ("Basketball court"). */
+export type AmenityTag = Amenity | (string & {});
+
 /** What kind of building it is — one of the first things NCR renters filter on. */
 export type BuildingType = "GATED_SOCIETY" | "BUILDER_FLOOR" | "DDA_FLAT" | "INDEPENDENT_HOUSE" | "STANDALONE_APARTMENT" | "OTHER";
 
@@ -57,7 +60,7 @@ export interface Property {
   floor?: number;
   totalFloors?: number;
   areaSqft?: number;
-  amenities: Amenity[];
+  amenities: AmenityTag[];
 }
 
 export interface Room {

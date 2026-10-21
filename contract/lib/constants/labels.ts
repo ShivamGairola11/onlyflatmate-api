@@ -107,6 +107,8 @@ export const PHOTO_AREA_LABEL: Record<PhotoArea, string> = {
 export const PHOTO_AREAS = Object.keys(PHOTO_AREA_LABEL) as PhotoArea[];
 
 export const AMENITY_OPTIONS = Object.keys(AMENITY_LABEL) as Amenity[];
+/** Known amenities by label; a lister's own amenity is already in words. */
+export const amenityLabel = (a: string) => AMENITY_LABEL[a as Amenity] ?? a;
 
 export const LIFESTYLE_LABEL: Record<LifestyleTag, string> = {
   NON_SMOKER: "Non-smoker",

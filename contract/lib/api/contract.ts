@@ -288,6 +288,15 @@ export interface AdminVerification {
   reviewNote?: string;
 }
 
+export type ContactTopic = "GENERAL" | "PAYMENTS" | "LISTING" | "ACCOUNT" | "GRIEVANCE";
+
+export interface ContactInput {
+  name: string;
+  email: string;
+  topic: ContactTopic;
+  message: string;
+}
+
 export interface ApiClient {
   /**
    * Sessions live in an httpOnly cookie set by the Next.js BFF — the browser never sees a token.
@@ -436,6 +445,10 @@ export interface ApiClient {
     useProviderAvatar(): Promise<{ avatarUrl: string }>;
     removeAvatar(): Promise<void>;
     update(patch: Partial<Profile>): Promise<Profile>;
+  };
+  support: {
+    /** The /contact form; works signed out. Saved, then emailed to the support inbox. */
+    contact(input: ContactInput): Promise<void>;
   };
   safety: {
     report(targetType: ReportTargetType, targetId: ID, reason: ReportReason, details?: string): Promise<Report>;

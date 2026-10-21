@@ -38,6 +38,8 @@ const schema = z.object({
   RESEND_API_KEY: z.string().optional(),
   /** Sender for those emails; the domain must be verified in Resend. */
   EMAIL_FROM: z.string().default('FindFlatmates <verify@findflatmates.in>'),
+  /** Inbox that receives /contact form messages. */
+  SUPPORT_EMAIL: z.string().default('support@findflatmates.in'),
   /**
    * Shared secret the Next.js BFF sends as `x-internal-key`. With it set, the API answers nobody else
    * (404), so its address leaking doesn't expose any data. Required in production.

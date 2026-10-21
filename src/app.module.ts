@@ -5,6 +5,7 @@ import { AdminController, AdminGuard } from './admin/admin.js';
 import { AuthGuard, Public } from './common/auth.js';
 import { RateLimitGuard } from './common/rate-limit.js';
 import { ApiExceptionFilter } from './common/exception.filter.js';
+import { ContactController } from './contact/contact.js';
 import { CommuteController } from './commute/commute.controller.js';
 import { CommuteService } from './commute/commute.service.js';
 import { type Database, DbModule, InjectDb } from './db/db.module.js';
@@ -67,6 +68,7 @@ class HealthController {
     EventsController,
     PaymentsController,
     SafetyController,
+    ContactController,
     AdminController,
     VerificationsController,
     AvatarController,
