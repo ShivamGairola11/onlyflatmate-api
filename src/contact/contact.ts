@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ContactTopic } from '@/lib/api/contract';
 import { type AuthUser, OptionalUser, Public } from '../common/auth.js';
 import { sendEmail } from '../common/email.js';
+import { renderEmail } from '../common/email-template.js';
 import { RateLimit } from '../common/rate-limit.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
@@ -43,8 +44,13 @@ export class ContactController {
       .executeTakeFirstOrThrow();
     const sent = await sendEmail(
       config.SUPPORT_EMAIL,
-      `[${TOPIC_LABEL[m.topic]}] ${m.name}`,
-      `${m.message}\n\n—\nFrom: ${m.name} <${m.email}>\nAccount: ${user?.id ?? 'not signed in'}\nMessage id: ${row.id}`,
+      `New message from ${m.name}: ${TOPIC_LABEL[m.topic]}`,
+      renderEmail({
+        preview: m.message.slice(0, 120),
+        heading: TOPIC_LABEL[m.topic],
+        paragraphs: [m.message],
+        footnote: `From ${m.name} <${m.email}> · ${user ? `account ${user.id}` : 'not signed in'} · message ${row.id}\nReply to this email to answer them directly.`,
+      }),
       m.email,
     );
     if (!sent) this.log.warn(`Contact message ${row.id} saved but the notification email failed`);

@@ -6,6 +6,7 @@ import type { Verification } from '@/features/profiles/types';
 import { ApiError, invalid } from '../common/api-error.js';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
 import { sendEmail } from '../common/email.js';
+import { renderEmail } from '../common/email-template.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { RateLimit } from '../common/rate-limit.js';
@@ -133,7 +134,13 @@ export class VerificationsService {
     const sent = await sendEmail(
       email,
       `${code} is your FindFlatmates verification code`,
-      `Your code is ${code}. It expires in 10 minutes.\n\nEnter it on your FindFlatmates profile to verify where you work. If you didn't ask for this, you can ignore this email.`,
+      renderEmail({
+        preview: `Your code is ${code}. It expires in 10 minutes.`,
+        heading: 'Verify your workplace',
+        paragraphs: ['Enter this code on your FindFlatmates profile to confirm where you work. It expires in 10 minutes.'],
+        highlight: code,
+        footnote: "Didn't ask for this? You can safely ignore this email. Your address won't be added to any account.",
+      }),
     );
     if (!sent) throw new ApiError('UNKNOWN', 'We couldn’t send the email right now. Try again shortly.', 502);
   }

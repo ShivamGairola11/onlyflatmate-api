@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'kysely';
 import { sendEmail } from '../common/email.js';
+import { renderEmail } from '../common/email-template.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 
@@ -58,7 +59,16 @@ export class PassRemindersService implements OnModuleInit, OnApplicationShutdown
       const ok = await sendEmail(
         r.email,
         'Your Contact Pass ends tomorrow',
-        `Hi ${first},\n\nYour FindFlatmates Contact Pass ends on ${istTime(new Date(r.expires_at))}. After that you can still read your conversations, but you'll need a pass to send messages or start new ones.\n\nStill looking? Renew now — the new pass starts when this one ends, so you don't lose any days:\n${config.WEB_URL}/contact-pass\n\nGood luck with the search!`,
+        renderEmail({
+          preview: `Your pass ends on ${istTime(new Date(r.expires_at))}. Renew without losing a day.`,
+          heading: `Hi ${first}, your pass ends tomorrow`,
+          paragraphs: [
+            `Your FindFlatmates Contact Pass ends on ${istTime(new Date(r.expires_at))}. After that you can still read your conversations, but you'll need a pass to send messages or start new ones.`,
+            "Still looking? Renew now. The new pass starts when this one ends, so you don't lose any days.",
+          ],
+          cta: { label: 'Renew Contact Pass', url: `${config.WEB_URL}/contact-pass` },
+          footnote: 'Listers always reply for free. Good luck with the search!',
+        }),
       );
       if (ok) sent++;
       // Couldn't send: release the claim so the next run tries again.
