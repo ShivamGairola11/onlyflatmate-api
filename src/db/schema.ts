@@ -46,6 +46,7 @@ export interface ContactPasses {
   expires_at: Timestamp;
   id: Generated<string>;
   payment_id: string;
+  plan: string | null;
   reminder_sent_at: Timestamp | null;
   starts_at: Generated<Timestamp>;
   user_id: string;
@@ -211,6 +212,7 @@ export interface Payments {
   currency: Generated<string>;
   id: Generated<string>;
   method: string | null;
+  plan: string | null;
   provider: string;
   provider_order_id: string;
   provider_payment_id: string | null;

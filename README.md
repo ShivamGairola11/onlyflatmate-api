@@ -43,6 +43,10 @@ the web app (it writes here), then `npm run db:reset`.
 - **Auth:** `src/common/auth.ts` verifies Supabase JWTs (JWKS in the cloud, the HS256 secret
   locally). Routes are signed-in by default; `@Public()` opts out, `@OptionalUser()` still sees who
   is asking.
+- **Signed-out responses** are trimmed in one place, `src/common/visibility.ts`. Listings are fully
+  public; residents, listers, flatmate profiles and group members drop personal fields. The full
+  access policy is in `.claude/skills/business-logic/SKILL.md` ("Who sees what"), and
+  `test/access.e2e-spec.ts` covers it.
 - **Errors** always leave as `{ code, message }` (`src/common/exception.filter.ts`), the shape the
   web app's HTTP client turns back into an `ApiError`.
 

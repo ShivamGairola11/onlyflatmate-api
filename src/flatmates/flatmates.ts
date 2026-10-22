@@ -9,6 +9,7 @@ import { assertNoContactInfo } from '../common/contact-info.js';
 import { queryBool, queryList, queryNumber } from '../common/zod.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { RateLimit } from '../common/rate-limit.js';
+import { publicFlatmate } from '../common/visibility.js';
 
 /** Preferred areas within this distance of the searched area count as a match. */
 const NEARBY_AREA_KM = 6;
@@ -84,16 +85,24 @@ export class FlatmatesService {
     if (p.budgetMax !== undefined) q = q.where('f.budget_min', '<=', p.budgetMax);
     if (p.gender && p.gender !== 'ANY') q = q.where('p.gender', '=', p.gender);
     if (p.moveInBefore) q = q.where('f.move_in', '<=', p.moveInBefore.slice(0, 10) as never);
-    if (p.lifestyle?.length) q = q.where(sql<boolean>`f.lifestyle @> ${sql.val(p.lifestyle)}::text[]`);
+    // Signed out, lifestyle is withheld, so it can't be probed through the filter either.
+    if (viewerId && p.lifestyle?.length) q = q.where(sql<boolean>`f.lifestyle @> ${sql.val(p.lifestyle)}::text[]`);
     if (p.hasPlace !== undefined) q = q.where('f.has_place', '=', p.hasPlace);
     if (p.workplaceId) q = q.where('f.workplace_id', '=', p.workplaceId);
-    return (await q.limit(200).execute()).map((r) => this.toProfile(r));
+    return (await q.limit(200).execute()).map((r) => (viewerId ? this.toProfile(r) : publicFlatmate(this.toProfile(r))));
   }
 
-  async get(id: string) {
-    const r = await this.base().where('f.id', '=', id).executeTakeFirst();
+  async get(id: string, viewerId?: string) {
+    let q = this.base().where('f.id', '=', id);
+    if (viewerId) {
+      // Blocked either way reads as gone, so it never says who blocked whom.
+      q = q
+        .where('f.user_id', 'not in', this.db.selectFrom('blocks').select('blocked_user_id').where('blocker_id', '=', viewerId))
+        .where('f.user_id', 'not in', this.db.selectFrom('blocks').select('blocker_id').where('blocked_user_id', '=', viewerId));
+    }
+    const r = await q.executeTakeFirst();
     if (!r) throw notFound('This profile is no longer available.');
-    return this.toProfile(r);
+    return viewerId ? this.toProfile(r) : publicFlatmate(this.toProfile(r));
   }
 
   async mine(userId: string) {
@@ -193,8 +202,9 @@ export class FlatmatesController {
   }
 
   @Public()
+  @RateLimit(120, 60)
   @Get(':id')
-  get(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.flatmates.get(id);
+  get(@Param('id', new ParseUUIDPipe()) id: string, @OptionalUser() user?: AuthUser) {
+    return this.flatmates.get(id, user?.id);
   }
 }

@@ -16,6 +16,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { type Expression, type SqlBool, sql } from 'kysely';
 import { z } from 'zod';
+import type { PassPlanId } from '@/features/payments/types';
 import type {
   AdminListing,
   AdminOverview,
@@ -634,6 +635,7 @@ export class AdminController {
         'c.starts_at',
         'c.expires_at',
         'c.payment_id',
+        'c.plan',
         'pa.amount',
         'p.user_id',
         'p.display_name',
@@ -668,6 +670,7 @@ export class AdminController {
       paymentId: r.payment_id,
       amount: r.amount,
       complimentary: r.amount === 0,
+      plan: (r.plan as PassPlanId | null) ?? undefined,
     }));
     return pageOf(items, totalOf(rows), page);
   }
@@ -732,7 +735,7 @@ export class AdminController {
         provider_order_id: `comp_${crypto.randomUUID()}`,
         status: 'CREATED',
       })
-      .returning(['id', 'user_id', 'method'])
+      .returning(['id', 'user_id', 'method', 'plan'])
       .executeTakeFirstOrThrow();
     await grantPass(this.db, payment, `comp_by_${me.id}`, undefined, days);
     this.log.log(`${me.id} granted a ${days}d complimentary pass to ${userId}`);

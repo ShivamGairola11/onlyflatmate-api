@@ -13,7 +13,7 @@ import type { Request } from 'express';
 import { sql } from 'kysely';
 import Razorpay from 'razorpay';
 import { z } from 'zod';
-import type { ContactPass } from '@/features/payments/types';
+import type { ContactPass, PassPlan, PassPlanId } from '@/features/payments/types';
 import type { ContactPassStatus } from '@/lib/api/contract';
 import { ApiError, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, Public } from '../common/auth.js';
@@ -21,9 +21,14 @@ import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { RateLimit } from '../common/rate-limit.js';
 
-/** Same values as the web app's contactPassConfig. */
-const PRICE_INR = 59;
-export const VALIDITY_DAYS = 7;
+/** Same values as the web app's contactPassPlans. */
+export const PLANS: Record<PassPlanId, PassPlan> = {
+  MINI: { id: 'MINI', name: 'Mini', days: 3, priceInr: 99 },
+  PRO: { id: 'PRO', name: 'Pro', days: 7, priceInr: 149 },
+  MAX: { id: 'MAX', name: 'Max', days: 30, priceInr: 999 },
+};
+/** Passes bought before plans existed were all a week. */
+const LEGACY_DAYS = 7;
 
 /** Null in mock mode. config.ts guarantees both keys are set when the provider is razorpay. */
 export const razorpay =
@@ -58,6 +63,7 @@ const toPass = (p: {
   payment_id: string;
   starts_at: Date;
   expires_at: Date;
+  plan: string | null;
 }): ContactPass => ({
   id: p.id,
   userId: p.user_id,
@@ -65,6 +71,7 @@ const toPass = (p: {
   startsAt: new Date(p.starts_at).toISOString(),
   expiresAt: new Date(p.expires_at).toISOString(),
   status: new Date(p.expires_at) > new Date() ? 'ACTIVE' : 'EXPIRED',
+  plan: (p.plan as PassPlanId | null) ?? undefined,
 });
 
 @Controller()
@@ -83,24 +90,24 @@ export class PaymentsController {
     return {
       active: !!pass,
       pass: pass && toPass(pass),
-      priceInr: PRICE_INR,
-      validityDays: VALIDITY_DAYS,
+      plans: Object.values(PLANS),
     };
   }
 
   /** Step 1 of checkout: an order the payment provider will charge against. */
   @RateLimit(20, 3600)
   @Post('payments/contact-pass/order')
-  async order(@CurrentUser() user: AuthUser) {
+  async order(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    const plan = PLANS[z.object({ plan: z.enum(['MINI', 'PRO', 'MAX']) }).parse(body).plan];
     let providerOrderId = `order_${randomUUID()}`;
     if (razorpay) {
       // Razorpay charges in paise. The amount is fixed here, server-side, so the client can't change it.
       const order = await razorpay.orders
         .create({
-          amount: PRICE_INR * 100,
+          amount: plan.priceInr * 100,
           currency: 'INR',
           receipt: `cp_${randomUUID().slice(0, 32)}`,
-          notes: { userId: user.id, purpose: 'CONTACT_PASS' },
+          notes: { userId: user.id, purpose: 'CONTACT_PASS', plan: plan.id },
         })
         .catch(() => {
           throw paymentFailed(
@@ -114,7 +121,8 @@ export class PaymentsController {
       .insertInto('payments')
       .values({
         user_id: user.id,
-        amount: PRICE_INR,
+        amount: plan.priceInr,
+        plan: plan.id,
         provider: razorpay ? 'RAZORPAY' : 'MOCK',
         provider_order_id: providerOrderId,
       })
@@ -255,11 +263,13 @@ export class PaymentsController {
  */
 export function grantPass(
   db: Database,
-  payment: { id: string; user_id: string; method: string | null },
+  payment: { id: string; user_id: string; method: string | null; plan: string | null },
   providerPaymentId: string,
   method?: Method,
-  days = VALIDITY_DAYS,
+  /** Only for plan-less payments (admin complimentary passes). */
+  days = LEGACY_DAYS,
 ) {
+  if (payment.plan) days = PLANS[payment.plan as PassPlanId].days;
   return db.transaction().execute(async (trx) => {
     const updated = await trx
       .updateTable('payments')
@@ -286,6 +296,7 @@ export function grantPass(
       .values({
         user_id: payment.user_id,
         payment_id: payment.id,
+        plan: payment.plan,
         starts_at: startsAt,
         expires_at: new Date(startsAt.getTime() + days * 86_400_000),
       })

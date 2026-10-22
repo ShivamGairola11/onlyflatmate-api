@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { type ExpressionBuilder, sql, type SqlBool, type Expression } from 'kysely';
 import type { ListingPinsResult, ListingSearchResult, PageParams, PublicUser, SearchFocus } from '@/lib/api/contract';
 import type { Listing, ListingPhoto, ListingSearchParams } from '@/features/listings/types';
-import { forbidden, notFound } from '../common/api-error.js';
+import { notFound } from '../common/api-error.js';
+import { publicLister, publicListing } from '../common/visibility.js';
 import { CommuteService } from '../commute/commute.service.js';
 import { type AppDB, type Database, InjectDb } from '../db/db.module.js';
 import type { Listings } from '../db/schema.js';
@@ -15,11 +16,10 @@ const MAX_PINS = 500;
 /** Matches considered when a workplace is set (each needs a commute, i.e. routing calls). */
 const MAX_COMMUTE_CANDIDATES = 300;
 /**
- * How deep a search can be paged. Signed out, browsing is generous but bulk-copying the catalogue isn't:
- * past this the list just ends (with sign-in, and rate limits per account, for more).
+ * How deep a search can be paged, signed in or out: discovery is public. Bulk copying is held back by
+ * the per-IP/per-account rate limits on the route, not by a sign-in wall.
  */
-const MAX_RESULTS_SIGNED_OUT = 120;
-const MAX_RESULTS_SIGNED_IN = 1000;
+const MAX_RESULTS = 1000;
 
 type Eb = ExpressionBuilder<AppDB & { l: Listings }, 'l'>;
 
@@ -100,9 +100,19 @@ export class ListingsService {
     return out;
   }
 
-  private async hydrate(rows: ListingRow[]): Promise<Listing[]> {
+  /** Rows → listings. `viewerId` undefined = a signed-out caller, who gets the public trim (see visibility.ts). */
+  private async hydrate(rows: ListingRow[], viewerId: string | undefined | 'full'): Promise<Listing[]> {
     const photos = await this.photosFor(rows.map((r) => r.id));
-    return rows.map((r) => toListing(r, photos.get(r.id) ?? []));
+    return rows.map((r) => toListing(r, photos.get(r.id) ?? [])).map((l) => (viewerId ? l : publicListing(l)));
+  }
+
+  /** Listers the viewer can't see: blocks hide people both ways. */
+  private blockedWith(viewerId: string) {
+    return this.db
+      .selectFrom('blocks')
+      .select('blocked_user_id as id')
+      .where('blocker_id', '=', viewerId)
+      .union(this.db.selectFrom('blocks').select('blocker_id as id').where('blocked_user_id', '=', viewerId));
   }
 
   /** Recommended order: fresh check-ins first, then a shorter commute when there's a workplace. */
@@ -141,7 +151,7 @@ export class ListingsService {
   async search(p: ListingSearchParams & PageParams, viewerId?: string): Promise<ListingSearchResult> {
     const focus = await this.areaFocus(p.area);
     const where = this.where(p, focus, viewerId);
-    const cap = viewerId ? MAX_RESULTS_SIGNED_IN : MAX_RESULTS_SIGNED_OUT;
+    const cap = MAX_RESULTS;
     // The cursor is client-supplied: only a whole number inside the cap is accepted.
     const decoded = p.cursor ? Math.trunc(Number(Buffer.from(p.cursor, 'base64url').toString())) : 0;
     const offset = Number.isFinite(decoded) ? Math.min(Math.max(decoded, 0), cap) : 0;
@@ -152,7 +162,7 @@ export class ListingsService {
       const ranked = await this.rankedByCommute(p, where);
       const slice = ranked.slice(offset, offset + size);
       const rows = slice.length ? await this.db.selectFrom('listings as l').selectAll('l').select([lat, lng]).where('l.id', 'in', slice.map((r) => r.id)).execute() : [];
-      const byId = new Map((await this.hydrate(rows)).map((l) => [l.id, l]));
+      const byId = new Map((await this.hydrate(rows, viewerId)).map((l) => [l.id, l]));
       const items = slice.map((r) => ({ ...byId.get(r.id)!, commute: r.commute }));
       return { items, total: ranked.length, nextCursor: page(offset + slice.length, ranked.length), focus };
     }
@@ -170,7 +180,7 @@ export class ListingsService {
       this.db.selectFrom('listings as l').select((eb) => eb.fn.countAll<string>().as('n')).where(where).executeTakeFirstOrThrow(),
     ]);
     const total = Number(count.n);
-    return { items: await this.hydrate(rows), total, nextCursor: page(offset + rows.length, total), focus };
+    return { items: await this.hydrate(rows, viewerId), total, nextCursor: page(offset + rows.length, total), focus };
   }
 
   async pins(p: ListingSearchParams, viewerId?: string): Promise<ListingPinsResult> {
@@ -216,14 +226,31 @@ export class ListingsService {
         .select('id')
         .where((eb) => eb.or([eb.and([eb('blocker_id', '=', viewerId), eb('blocked_user_id', '=', row.lister_id)]), eb.and([eb('blocker_id', '=', row.lister_id), eb('blocked_user_id', '=', viewerId)])]))
         .executeTakeFirst();
-      if (blocked) throw forbidden('You’ve blocked this lister.');
+      // Same answer as a missing listing: never says who blocked whom.
+      if (blocked) throw notFound('This listing doesn’t exist or has been removed.');
       await this.db.updateTable('listings').set((eb) => ({ view_count: eb('view_count', '+', 1) })).where('id', '=', id).execute();
     }
-    const [listing] = await this.hydrate([row]);
-    return { listing, lister: await this.publicUser(row.lister_id), isOwner: viewerId === row.lister_id };
+    const [listing] = await this.hydrate([row], viewerId);
+    const lister = await this.publicUser(row.lister_id);
+    return { listing, lister: viewerId ? lister : publicLister(lister), isOwner: viewerId === row.lister_id };
   }
 
-  /** Public batch read. `includeRemoved` only for the owner's own just-edited listing. */
+  /** Batch read for a caller (the `GET /listings/batch` route and the shortlist): blocks apply, signed-out gets the public trim. */
+  async batch(ids: string[], viewerId?: string): Promise<Listing[]> {
+    if (!ids.length) return [];
+    const rows = await this.db
+      .selectFrom('listings as l')
+      .selectAll('l')
+      .select([lat, lng])
+      .where('l.id', 'in', ids)
+      .where('l.status', '!=', 'REMOVED')
+      .$if(!!viewerId, (q) => q.where('l.lister_id', 'not in', this.blockedWith(viewerId!)))
+      .execute();
+    const byId = new Map((await this.hydrate(rows, viewerId)).map((l) => [l.id, l]));
+    return ids.map((id) => byId.get(id)).filter((l): l is Listing => !!l);
+  }
+
+  /** Server-side read with every field (editor responses, chat context). `includeRemoved` only for the owner's own just-edited listing. */
   async getMany(ids: string[], includeRemoved = false): Promise<Listing[]> {
     if (!ids.length) return [];
     const rows = await this.db
@@ -233,13 +260,13 @@ export class ListingsService {
       .where('l.id', 'in', ids)
       .$if(!includeRemoved, (q) => q.where('l.status', '!=', 'REMOVED'))
       .execute();
-    const byId = new Map((await this.hydrate(rows)).map((l) => [l.id, l]));
+    const byId = new Map((await this.hydrate(rows, 'full')).map((l) => [l.id, l]));
     return ids.map((id) => byId.get(id)).filter((l): l is Listing => !!l);
   }
 
   async mine(userId: string): Promise<Listing[]> {
     const rows = await this.db.selectFrom('listings as l').selectAll('l').select([lat, lng]).where('l.lister_id', '=', userId).orderBy('l.created_at', 'desc').execute();
-    return this.hydrate(rows);
+    return this.hydrate(rows, userId);
   }
 
   /** What other people may see about a user. */

@@ -11,6 +11,10 @@ import type {
 } from "@/types/common";
 
 /** A person on the platform looking for someone to live with. */
+/**
+ * Signed-out viewers get the "looking for" summary only: `userId`, `bio` and `workArea` are "" and
+ * `lifestyle` / `languages` are [] (withheld by the API, not just hidden in the UI).
+ */
 export interface FlatmateProfile {
   id: ID;
   userId: ID;

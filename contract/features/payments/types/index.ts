@@ -5,6 +5,14 @@ export type PaymentStatus =
   "CREATED" | "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED";
 export type PaymentProvider = "MOCK" | "RAZORPAY" | "STRIPE";
 export type PaymentMethod = "UPI" | "CARD" | "NETBANKING";
+export type PassPlanId = "MINI" | "PRO" | "MAX";
+
+export interface PassPlan {
+  id: PassPlanId;
+  name: string;
+  days: number;
+  priceInr: Rupees;
+}
 
 export interface Payment {
   id: ID;
@@ -17,6 +25,8 @@ export interface Payment {
   method?: PaymentMethod;
   status: PaymentStatus;
   purpose: "CONTACT_PASS";
+  /** Absent on complimentary passes and ones bought before plans existed. */
+  plan?: PassPlanId;
   createdAt: ISODateString;
 }
 
@@ -27,6 +37,8 @@ export interface ContactPass {
   startsAt: ISODateString;
   expiresAt: ISODateString;
   status: "ACTIVE" | "EXPIRED";
+  /** Absent on complimentary passes and ones bought before plans existed. */
+  plan?: PassPlanId;
 }
 
 export interface PaymentOrder {

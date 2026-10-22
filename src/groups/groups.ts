@@ -10,6 +10,7 @@ import { assertNoContactInfo } from '../common/contact-info.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { ListingsService } from '../listings/listings.service.js';
 import { RateLimit } from '../common/rate-limit.js';
+import { publicGroup } from '../common/visibility.js';
 
 const DAY_MS = 86_400_000;
 /** Groups returned by one list call. */
@@ -69,9 +70,13 @@ export class GroupsService {
     return g;
   }
 
-  /** Members see everything. Others don't get the invite code (the key to join) or members' account ids. */
+  /**
+   * Members see everything. Signed-in others don't get the invite code (the key to join) or members'
+   * account ids. Signed out: only the group's brief, with members as anonymous seats.
+   */
   forViewer(g: FlatGroup, viewerId?: string): FlatGroup {
-    if (viewerId && g.members.some((m) => m.userId === viewerId)) return g;
+    if (!viewerId) return publicGroup(g);
+    if (g.members.some((m) => m.userId === viewerId)) return g;
     return { ...g, inviteCode: '', members: g.members.map(({ userId: _hidden, ...m }) => m) };
   }
 
@@ -190,10 +195,11 @@ export class GroupsService {
   }
 
   /** Whole flats scored on budget, location, BHK and move-in (same rules as the web prototype). */
-  async matches(id: string): Promise<GroupMatch[]> {
+  async matches(id: string, viewerId: string): Promise<GroupMatch[]> {
     const g = await this.get(id);
     const moveIn = new Date(g.moveIn).getTime();
-    const candidates = await this.listings.search({ types: ['ENTIRE_FLAT'], limit: 60 });
+    // Through the viewer, so listers they've blocked (or who blocked them) stay out.
+    const candidates = await this.listings.search({ types: ['ENTIRE_FLAT'], limit: 60 }, viewerId);
     // Km from each candidate to the closest of the group's areas.
     const ids = candidates.items.map((l) => l.id);
     const { rows } = g.areas.length && ids.length
@@ -298,9 +304,10 @@ export class GroupsController {
     return this.groups.leave(id, user.id);
   }
 
-  @Public()
+  /** Signed in: the matching flats sit behind the same sign-in as the members. */
+  @RateLimit(30, 60)
   @Get(':id/matches')
-  matches(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.groups.matches(id);
+  matches(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.groups.matches(id, user.id);
   }
 }

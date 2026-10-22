@@ -22,13 +22,14 @@ import type {
   UpdateListingInput,
 } from "@/features/listings/types";
 import type { Conversation, CreateConversationInput, Message, MessagingEvent } from "@/features/messaging/types";
-import type { ConfirmPaymentInput, ContactPass, PaymentMethod, PaymentOrder, PaymentProvider, PaymentStatus } from "@/features/payments/types";
+import type { ConfirmPaymentInput, ContactPass, PassPlan, PassPlanId, PaymentMethod, PaymentOrder, PaymentProvider, PaymentStatus } from "@/features/payments/types";
 import type { IdDocumentType, Profile, User, UserMode, Verification, VerificationStatus, VerificationType } from "@/features/profiles/types";
 import type { CityId } from "@/lib/constants/places";
 import type { ListingDraft } from "@/lib/validation/listing";
 import type { GeoLocation, ID, Report, ReportReason, ReportTargetType } from "@/types/common";
 
 /** The subset of a user's identity that other users may see. */
+/** What other people see about a user. Signed out: no `age` or `profession`. */
 export interface PublicUser {
   id: ID;
   firstName: string;
@@ -115,8 +116,7 @@ export interface UploadedPhoto {
 export interface ContactPassStatus {
   active: boolean;
   pass?: ContactPass;
-  priceInr: number;
-  validityDays: number;
+  plans: PassPlan[];
 }
 
 export interface AdminStats {
@@ -236,6 +236,7 @@ export interface AdminPass {
   amount: number;
   /** Granted by an admin, not bought. */
   complimentary: boolean;
+  plan?: PassPlanId;
 }
 
 /** REMOVED: taken down by moderators — hidden from everyone but the lister, who can't relist it. */
@@ -431,7 +432,7 @@ export interface ApiClient {
   };
   payments: {
     contactPassStatus(): Promise<ContactPassStatus>;
-    createContactPassOrder(): Promise<PaymentOrder>;
+    createContactPassOrder(plan: PassPlanId): Promise<PaymentOrder>;
     confirmPayment(input: ConfirmPaymentInput): Promise<ContactPass>;
   };
   profiles: {

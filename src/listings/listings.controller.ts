@@ -71,8 +71,8 @@ export class ListingsController {
   @Public()
   @RateLimit(30, 60)
   @Get('batch')
-  batch(@Query('ids') ids: unknown) {
-    return this.listings.getMany(idList.parse(ids));
+  batch(@Query('ids') ids: unknown, @OptionalUser() user?: AuthUser) {
+    return this.listings.batch(idList.parse(ids), user?.id);
   }
 
   @Get('mine')
@@ -81,6 +81,7 @@ export class ListingsController {
   }
 
   @Public()
+  @RateLimit(120, 60)
   @Get(':id')
   get(@Param('id', new ParseUUIDPipe()) id: string, @OptionalUser() user?: AuthUser) {
     return this.listings.get(id, user?.id);

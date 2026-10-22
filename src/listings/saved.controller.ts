@@ -33,7 +33,7 @@ export class SavedController {
   @Get('listings')
   async details(@CurrentUser() user: AuthUser) {
     const ids = await this.db.selectFrom('saved_listings').select('listing_id').where('user_id', '=', user.id).orderBy('saved_at', 'desc').limit(MAX_SAVED).execute();
-    return this.listings.getMany(ids.map((r) => r.listing_id));
+    return this.listings.batch(ids.map((r) => r.listing_id), user.id);
   }
 
   @Post()

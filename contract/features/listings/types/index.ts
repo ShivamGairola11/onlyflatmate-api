@@ -72,6 +72,7 @@ export interface Room {
 }
 
 /** A person already living at the property. Lightweight — not necessarily a platform user. */
+/** A current resident. Signed-out viewers get age, gender and profession only: `name` is "" and `lifestyle` [] (and no `userId`). */
 export interface Flatmate {
   id: ID;
   name: string;

@@ -17,6 +17,10 @@ export interface GroupMember {
   joinedAt: ISODateString;
 }
 
+/**
+ * Signed-out viewers get the brief only: `ownerId` and `inviteCode` are "", `note` is absent, and each
+ * member is an anonymous seat (`name`/`profession` "", `budget` 0; role and status kept for counts).
+ */
 export interface FlatGroup {
   id: ID;
   ownerId: ID;
