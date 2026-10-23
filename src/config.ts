@@ -48,7 +48,7 @@ const schema = z.object({
    */
   INTERNAL_API_KEY: z.string().min(32).optional(),
   /** The web app's public origin, for links in emails (no trailing slash). */
-  WEB_URL: z.url().default('https://findflatmates.in').transform((u) => u.replace(/\/+$/, '')),
+  WEB_URL: z.url().default('https://www.findflatmates.in').transform((u) => u.replace(/\/+$/, '')),
 }).refine((c) => c.PAYMENTS_PROVIDER !== 'razorpay' || (c.RAZORPAY_KEY_ID && c.RAZORPAY_KEY_SECRET), {
   message: 'RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required when PAYMENTS_PROVIDER=razorpay',
 })
