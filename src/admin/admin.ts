@@ -296,8 +296,11 @@ export class AdminController {
       // Funnel: distinct visitors per step, this range vs the one before. Purchases come from payments.
       run(sql<Record<string, string>>`
         with e as (select name, visitor_id, props, created_at >= ${start} as cur from analytics_events where created_at >= ${prevStart}),
-             b as (select count(distinct user_id) filter (where created_at >= ${start}) as cur, count(distinct user_id) filter (where created_at < ${start}) as prev
-                   from payments where status = 'SUCCEEDED' and amount > 0 and created_at >= ${prevStart})
+             -- Buyers the funnel actually saw: paying users with an event in the same period. Purchases from before
+             -- tracking (or by people never tracked) would otherwise outnumber visitors (a "300%" funnel).
+             b as (select count(distinct p.user_id) filter (where p.created_at >= ${start} and exists (select 1 from analytics_events a where a.user_id = p.user_id and a.created_at >= ${start})) as cur,
+                          count(distinct p.user_id) filter (where p.created_at < ${start} and exists (select 1 from analytics_events a where a.user_id = p.user_id and a.created_at >= ${prevStart} and a.created_at < ${start})) as prev
+                   from payments p where p.status = 'SUCCEEDED' and p.amount > 0 and p.created_at >= ${prevStart})
         select
           count(distinct visitor_id) filter (where cur) as visited, count(distinct visitor_id) filter (where not cur) as visited_prev,
           count(distinct visitor_id) filter (where cur and name = 'listing_view') as viewed, count(distinct visitor_id) filter (where not cur and name = 'listing_view') as viewed_prev,

@@ -187,7 +187,8 @@ export interface AdminOverview {
   recentUsers: { id: ID; name: string; createdAt: string }[];
   /**
    * Visitor funnel from first-party events (`POST /analytics/events`). Each step counts distinct visitors
-   * in the range; PURCHASED counts distinct paying users from `payments` (server truth, not an event).
+   * in the range; PURCHASED counts distinct paying users from `payments` (server truth, not an event) who were
+   * also tracked in the range, so it can't exceed the visitors above it. All passes sold: `kpis.paidPasses`.
    */
   funnel: {
     steps: { step: AdminFunnelStep; count: number; previous: number }[];

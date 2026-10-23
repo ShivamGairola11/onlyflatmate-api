@@ -68,6 +68,13 @@ describe('Analytics events (e2e)', () => {
     expect(step(body.funnel, 'PAYWALL') - step(before, 'PAYWALL')).toBe(1);
     expect(body.funnel.listingViews.current - before.listingViews.current).toBe(2);
     expect(body.daily.at(-1)).toHaveProperty('visitors');
+    // Buyers are only those the funnel saw, so they never outnumber visitors — even with purchases from
+    // people who were never tracked (the local seed has paid passes and no events in the last 30 days).
+    const month = (await http().get('/admin/overview?days=30').set('Authorization', `Bearer ${adminToken}`).expect(200)).body;
+    expect(month.kpis.paidPasses.current).toBeGreaterThan(0);
+    expect(step(month.funnel, 'PURCHASED')).toBeLessThanOrEqual(step(month.funnel, 'VISITED'));
+    // None of those buyers was tracked (only this test's visitors are), so the funnel counts none of them.
+    expect(step(month.funnel, 'PURCHASED')).toBe(0);
   });
 
   it('keeps the overview admin-only', () => http().get('/admin/overview').expect(401));
