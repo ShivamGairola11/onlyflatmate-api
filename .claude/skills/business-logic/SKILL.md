@@ -79,6 +79,15 @@ Principle (decided 2026-10-22): **gate actions, not property discovery.** Listin
 
 `track()` in `basera/src/lib/analytics.ts` pushes to the GTM `dataLayer` (GTM runs in production only). Properties are ids, page type, auth state, plan and amount only — never names, contact details or message text.
 
+**First-party copy for the admin dashboard:**
+- **Where events go:** in http mode, every event except `pass_purchased` is also sent to `POST /analytics/events` (`src/analytics/analytics.ts`; public, 120/min).
+  - It's stored in `analytics_events` with a random browser `visitor_id` (localStorage `ff.vid`; no fingerprinting) and `user_id` when signed in.
+  - Event names are allowlisted. Props are allowlisted keys with primitive values ≤ 64 chars; anything else is dropped.
+- **Retention:** 180 days (pruned by the hourly cleanup job).
+- **Purchases:** the funnel reads them from `payments` (distinct paying users), so they can't be faked from a browser.
+- **Admin overview** (`GET /admin/overview`): `funnel` (distinct visitors per step VISITED → VIEWED → CONTACTED → PAYWALL → PURCHASED, vs the previous period), sign-in completion, signed-out view share, `topListings`, and daily visitors/views/contacts.
+- Tests: `test/analytics.e2e-spec.ts`.
+
 | Event | Fired | Props |
 |---|---|---|
 | `listing_view` | listing page has data and the session is known; once per listing per page load | `listing_id`, `page_type`, `signed_in` |
@@ -141,6 +150,14 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
   - STALE after 72 h without confirmation; EXPIRED after 14 days. Derived, never stored.
   - Search and pins show only ACTIVE listings confirmed within 14 days.
   - "Confirm still available" resets the clock and revives OCCUPIED, but not REMOVED.
+- **Auto-delete:** a listing not confirmed for **30 days** (`DELETE_AFTER_DAYS`, `src/listings/listing.mapper.ts`) is hard-deleted by `ListingCleanupService` (`src/listings/listing-cleanup.ts`, hourly, batches of 500).
+  - **Email first:** at 27 days the owner gets one email per confirmation cycle (`REMIND_DAYS_BEFORE = 3`). It lists all their due listings and links to My listings. The claim is stamped in `listings.delete_reminder_sent_at`; a stamp older than `last_confirmed_at` belongs to an earlier cycle, so confirming re-arms it.
+  - **Never without notice:** a delete needs a reminder stamped in this cycle at least 3 days earlier. A missed run or a failed send (which releases the claim) delays the delete; it never skips the warning. Phone-only accounts get the stamp but no email; the in-app warning is their notice.
+  - OCCUPIED and REMOVED listings are never auto-deleted.
+  - Each listing carries `deletesAt` (last confirmation + 30 d; absent when kept), so the web shows the date without copying the rule.
+  - Confirming restarts the clock.
+  - `LISTING_CLEANUP=off` disables the job (local dev, so dated seed data survives).
+  - **Owner nudges:** an attention dot on the avatar and an "N to confirm" badge on "My listings" in the profile menu for STALE/EXPIRED listings. "My listings" shows a banner and, per listing, "Deleted on {date} unless you confirm" (`deletesAt`, the earliest possible date), plus the email above.
 - **REMOVED** = moderator takedown or ban. 404 for everyone except the owner (who sees it as EXPIRED).
 - **Location privacy:** the public point is fuzzed 122–350 m with a crypto-random bearing, re-fuzzed only when the pin moves. The exact point is only in `listing_private_locations`. Commute routes start from the public point.
 - **Photos:** JPEG/PNG/WebP, ≤ 10 MB, ≤ 40 MP. Re-encoded on the server (EXIF/GPS stripped).

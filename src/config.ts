@@ -26,6 +26,8 @@ const schema = z.object({
   ROUTER_TIMEOUT_MS: z.coerce.number().default(4000),
   /** Contact Pass checkout. "mock" accepts any payment (dev only); "razorpay" verifies signatures. */
   PAYMENTS_PROVIDER: z.enum(['mock', 'razorpay']).default('mock'),
+  /** Hourly delete of listings unconfirmed for 30 days. `off` locally, so dated seed data survives. */
+  LISTING_CLEANUP: z.enum(['on', 'off']).default('on'),
   /** Razorpay API keys. The key id is public (Checkout needs it); the secret never leaves the server. */
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),

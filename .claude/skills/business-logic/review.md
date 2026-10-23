@@ -84,7 +84,10 @@ Legend: **P0** = fix before real traffic or money · **P1** = hurts conversion o
 
 - **There's no in-app sign that a pass is about to expire.** Only an email is sent, and phone-only users get nothing. Add a banner in `/messages` within 24 h of expiry.
 - **Header "Get Pass" is desktop-only (`lg`).** On phones, where most users are, the pass is reachable only via contact CTAs. Put it in the profile menu or mobile tab.
-- **Listers get no nudges.** Listings go STALE after 72 h and only an in-app note asks them to confirm. Stale listings erode seeker trust, and seekers are who pays. Send a "still available?" email or WhatsApp with a one-tap confirm link at 60 h.
+- **Lister nudges (2026-10-23):** in-app attention dot, a per-listing deletion date, an email 3 days before deletion, and auto-delete after 30 days unconfirmed. Still open:
+  - an earlier "still available?" nudge at around 60 h, when the listing first goes stale;
+  - a one-tap confirm link in the email (it opens My listings today);
+  - WhatsApp, for phone-only owners.
 - **Support inbox** is stored but there's no admin tab to read it. Everything relies on the forwarded email.
 - **No unblock**, and no list of who you've blocked.
 - **Deleting a listing** orphans its photo files. Abandoned PENDING uploads are never cleaned up.

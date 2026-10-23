@@ -72,7 +72,7 @@ export class MessagingService {
     if (!ids.length) return [];
     const [convs, parts, last, unread] = await Promise.all([
       this.db.selectFrom('conversations').selectAll().where('id', 'in', ids).execute(),
-      this.db.selectFrom('conversation_participants as cp').innerJoin('profiles as p', 'p.user_id', 'cp.user_id').select(['cp.conversation_id', 'cp.user_id', 'cp.role', 'p.display_name']).where('cp.conversation_id', 'in', ids).execute(),
+      this.db.selectFrom('conversation_participants as cp').innerJoin('profiles as p', 'p.user_id', 'cp.user_id').select(['cp.conversation_id', 'cp.user_id', 'cp.role', 'p.display_name', 'p.avatar_url']).where('cp.conversation_id', 'in', ids).execute(),
       this.db.selectFrom('messages').selectAll().distinctOn('conversation_id').where('conversation_id', 'in', ids).orderBy('conversation_id').orderBy('sent_at', 'desc').execute(),
       this.db
         .selectFrom('messages')
@@ -91,7 +91,7 @@ export class MessagingService {
         context: c.context as unknown as ConversationContext,
         participants: parts
           .filter((p) => p.conversation_id === c.id)
-          .map((p): ConversationParticipant => ({ userId: p.user_id, name: p.display_name.split(' ')[0] || 'Member', role: p.role as ConversationParticipant['role'] })),
+          .map((p): ConversationParticipant => ({ userId: p.user_id, name: p.display_name.split(' ')[0] || 'Member', avatarUrl: p.avatar_url ?? undefined, role: p.role as ConversationParticipant['role'] })),
         initiatorId: c.initiator_id,
         lastMessage: ((m) => (m ? (seekerIn.has(c.id) ? lock(toMessage(m)) : toMessage(m)) : undefined))(last.find((m) => m.conversation_id === c.id)),
         unreadCount: Number(unread.find((u) => u.conversation_id === c.id)?.n ?? 0),

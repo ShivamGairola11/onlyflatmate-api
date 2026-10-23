@@ -151,6 +151,8 @@ export interface Listing {
   createdAt: ISODateString;
   updatedAt: ISODateString;
   lastConfirmedAt: ISODateString;
+  /** When it's deleted automatically unless the lister confirms first (confirming pushes it back). Absent for occupied listings. Set by the API. */
+  deletesAt?: ISODateString;
   viewCount: number;
 }
 

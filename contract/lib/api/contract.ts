@@ -144,7 +144,13 @@ export interface AdminDay {
   paidPasses: number;
   signups: number;
   messages: number;
+  /** Distinct visitors that day (first-party events). */
+  visitors: number;
+  listingViews: number;
+  contactClicks: number;
 }
+
+export type AdminFunnelStep = "VISITED" | "VIEWED" | "CONTACTED" | "PAYWALL" | "PURCHASED";
 
 /** A figure for the selected range next to the same-length range before it. */
 export interface AdminDelta {
@@ -179,6 +185,22 @@ export interface AdminOverview {
   };
   recentPayments: { id: ID; name: string; amount: number; status: PaymentStatus; createdAt: string }[];
   recentUsers: { id: ID; name: string; createdAt: string }[];
+  /**
+   * Visitor funnel from first-party events (`POST /analytics/events`). Each step counts distinct visitors
+   * in the range; PURCHASED counts distinct paying users from `payments` (server truth, not an event).
+   */
+  funnel: {
+    steps: { step: AdminFunnelStep; count: number; previous: number }[];
+    signinPrompts: AdminDelta;
+    signins: AdminDelta;
+    listingViews: AdminDelta;
+    /** Share of listing views made signed out (0–1). */
+    signedOutViewShare: number;
+    /** False until the first event arrives — the dashboard explains instead of showing zeros. */
+    tracking: boolean;
+  };
+  /** Most-viewed listings in the range, with contact clicks on them. */
+  topListings: { id: ID; title: string; locality: string; views: number; contacts: number }[];
 }
 
 export interface AdminQuery {

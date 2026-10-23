@@ -5,6 +5,9 @@ import type { Listings } from '../db/schema.js';
 /** Freshness rule (mirrors src/lib/config/app.ts `listingFreshness`). */
 export const STALE_AFTER_HOURS = 72;
 export const EXPIRE_AFTER_HOURS = 24 * 14;
+/** Not confirmed for this long → deleted by ListingCleanupService. Confirming restarts the clock. Occupied and removed listings are kept. */
+export const DELETE_AFTER_DAYS = 30;
+const KEPT = new Set(['OCCUPIED', 'REMOVED']);
 
 export type ListingRow = Selectable<Listings> & { lat: number; lng: number };
 
@@ -59,6 +62,7 @@ export function toListing(r: ListingRow, photos: ListingPhoto[]): Listing {
     createdAt: iso(r.created_at),
     updatedAt: iso(r.updated_at),
     lastConfirmedAt: iso(r.last_confirmed_at),
+    deletesAt: KEPT.has(r.status) ? undefined : new Date(new Date(r.last_confirmed_at).getTime() + DELETE_AFTER_DAYS * 86_400_000).toISOString(),
     viewCount: r.view_count,
   };
 }

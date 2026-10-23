@@ -16,6 +16,8 @@ export interface ConversationContext {
 export interface ConversationParticipant {
   userId: ID;
   name: string;
+  /** Their profile photo (their Google photo unless they uploaded one). */
+  avatarUrl?: string;
   role: "SEEKER" | "LISTER" | "MEMBER";
 }
 

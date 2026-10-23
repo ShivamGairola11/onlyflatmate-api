@@ -9,6 +9,8 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
+export type Int8 = ColumnType<string, bigint | number | string, bigint | number | string>;
+
 export type Json = JsonValue;
 
 export type JsonArray = JsonValue[];
@@ -24,6 +26,15 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 export type Numeric = ColumnType<string, number | string, number | string>;
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
+
+export interface AnalyticsEvents {
+  created_at: Generated<Timestamp>;
+  id: Generated<Int8>;
+  name: string;
+  props: Generated<Json>;
+  user_id: string | null;
+  visitor_id: string;
+}
 
 export interface Blocks {
   blocked_user_id: string;
@@ -132,10 +143,10 @@ export interface ListingDrafts {
 }
 
 export interface ListingPhotos {
+  area: string | null;
   listing_id: string;
   photo_id: string;
   position: number;
-  area: Generated<string | null>;
 }
 
 export interface ListingPrivateLocations {
@@ -156,6 +167,7 @@ export interface Listings {
   building_type_other: string | null;
   city: string | null;
   created_at: Generated<Timestamp>;
+  delete_reminder_sent_at: Timestamp | null;
   deposit: Generated<number>;
   description: Generated<string>;
   electricity_included: Generated<boolean>;
@@ -294,6 +306,7 @@ export interface WorkEmailCodes {
 }
 
 export interface DB {
+  analytics_events: AnalyticsEvents;
   blocks: Blocks;
   contact_messages: ContactMessages;
   contact_passes: ContactPasses;

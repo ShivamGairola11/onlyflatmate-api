@@ -230,17 +230,21 @@ export class AdminController {
     const prevStart = sql`(((now() at time zone ${IST})::date - ${2 * days - 1}::int)::timestamp at time zone ${IST})`;
     const run = async <T>(q: ReturnType<typeof sql<T>>) => (await q.execute(this.db)).rows;
 
-    const [daily, kpis, outcomes, methods, listings, localities, attention, recentPayments, recentUsers] = await Promise.all([
-      run(sql<{ date: string; revenue: string; passes: string; signups: string; messages: string }>`
+    const [daily, kpis, outcomes, methods, listings, localities, attention, recentPayments, recentUsers, funnel, topListings] = await Promise.all([
+      run(sql<{ date: string; revenue: string; passes: string; signups: string; messages: string; visitors: string; views: string; contacts: string }>`
         with d as (select generate_series(${start}::timestamptz, now(), interval '1 day') as ts)
         select to_char((d.ts at time zone ${IST})::date, 'YYYY-MM-DD') as date,
           coalesce(pa.revenue, 0) as revenue, coalesce(pa.passes, 0) as passes,
-          coalesce(pr.signups, 0) as signups, coalesce(m.messages, 0) as messages
+          coalesce(pr.signups, 0) as signups, coalesce(m.messages, 0) as messages,
+          coalesce(ev.visitors, 0) as visitors, coalesce(ev.views, 0) as views, coalesce(ev.contacts, 0) as contacts
         from d
         left join (select ${day('created_at')} as day, sum(amount) as revenue, count(*) filter (where amount > 0) as passes
                    from payments where status = 'SUCCEEDED' and created_at >= ${start} group by 1) pa on pa.day = (d.ts at time zone ${IST})::date
         left join (select ${day('created_at')} as day, count(*) as signups from profiles where created_at >= ${start} group by 1) pr on pr.day = (d.ts at time zone ${IST})::date
         left join (select ${day('sent_at')} as day, count(*) as messages from messages where sent_at >= ${start} group by 1) m on m.day = (d.ts at time zone ${IST})::date
+        left join (select ${day('created_at')} as day, count(distinct visitor_id) as visitors,
+                          count(*) filter (where name = 'listing_view') as views, count(*) filter (where name = 'contact_click') as contacts
+                   from analytics_events where created_at >= ${start} group by 1) ev on ev.day = (d.ts at time zone ${IST})::date
         order by 1`),
       run(sql<Record<string, string>>`
         select
@@ -289,7 +293,32 @@ export class AdminController {
         where pa.amount > 0 order by pa.created_at desc limit 6`),
       run(sql<{ id: string; name: string; created_at: Date }>`
         select user_id as id, display_name as name, created_at from profiles order by created_at desc limit 6`),
+      // Funnel: distinct visitors per step, this range vs the one before. Purchases come from payments.
+      run(sql<Record<string, string>>`
+        with e as (select name, visitor_id, props, created_at >= ${start} as cur from analytics_events where created_at >= ${prevStart}),
+             b as (select count(distinct user_id) filter (where created_at >= ${start}) as cur, count(distinct user_id) filter (where created_at < ${start}) as prev
+                   from payments where status = 'SUCCEEDED' and amount > 0 and created_at >= ${prevStart})
+        select
+          count(distinct visitor_id) filter (where cur) as visited, count(distinct visitor_id) filter (where not cur) as visited_prev,
+          count(distinct visitor_id) filter (where cur and name = 'listing_view') as viewed, count(distinct visitor_id) filter (where not cur and name = 'listing_view') as viewed_prev,
+          count(distinct visitor_id) filter (where cur and name = 'contact_click') as contacted, count(distinct visitor_id) filter (where not cur and name = 'contact_click') as contacted_prev,
+          count(distinct visitor_id) filter (where cur and name = 'paywall_shown') as paywall, count(distinct visitor_id) filter (where not cur and name = 'paywall_shown') as paywall_prev,
+          count(*) filter (where cur and name = 'signin_prompt_shown') as prompts, count(*) filter (where not cur and name = 'signin_prompt_shown') as prompts_prev,
+          count(*) filter (where cur and name = 'signin_done') as signins, count(*) filter (where not cur and name = 'signin_done') as signins_prev,
+          count(*) filter (where cur and name = 'listing_view') as views, count(*) filter (where not cur and name = 'listing_view') as views_prev,
+          count(*) filter (where cur and name = 'listing_view' and props->>'signed_in' = 'false') as views_signed_out,
+          (select cur from b) as bought, (select prev from b) as bought_prev,
+          exists (select 1 from analytics_events) as tracking
+        from e`),
+      run(sql<{ id: string; title: string; locality: string | null; views: string; contacts: string }>`
+        select l.id, l.title, l.locality, x.views, x.contacts from (
+          select coalesce(props->>'listing_id', case when props->>'context_type' = 'LISTING' then props->>'context_id' end) as id,
+                 count(*) filter (where name = 'listing_view') as views, count(*) filter (where name = 'contact_click') as contacts
+          from analytics_events where created_at >= ${start} and name in ('listing_view', 'contact_click') group by 1
+        ) x join listings l on l.id::text = x.id
+        order by x.views desc, x.contacts desc limit 6`),
     ]);
+    const f = funnel[0]!;
 
     const k = kpis[0]!;
     const o = outcomes[0]!;
@@ -299,7 +328,7 @@ export class AdminController {
     const METHODS = new Set(['UPI', 'CARD', 'NETBANKING']);
     return {
       days,
-      daily: daily.map((d) => ({ date: d.date, revenueInr: Number(d.revenue), paidPasses: Number(d.passes), signups: Number(d.signups), messages: Number(d.messages) })),
+      daily: daily.map((d) => ({ date: d.date, revenueInr: Number(d.revenue), paidPasses: Number(d.passes), signups: Number(d.signups), messages: Number(d.messages), visitors: Number(d.visitors), listingViews: Number(d.views), contactClicks: Number(d.contacts) })),
       kpis: {
         revenueInr: delta(k.revenue, k.revenue_prev),
         paidPasses: delta(k.passes, k.passes_prev),
@@ -316,6 +345,23 @@ export class AdminController {
       attention: { openReports: Number(a.reports), pendingVerifications: Number(a.verifications), stuckPayments: Number(a.stuck), passesExpiring48h: Number(a.expiring) },
       recentPayments: recentPayments.map((p) => ({ id: p.id, name: p.name || 'Unnamed', amount: p.amount, status: p.status as AdminOverview['recentPayments'][number]['status'], createdAt: new Date(p.created_at).toISOString() })),
       recentUsers: recentUsers.map((u) => ({ id: u.id, name: u.name || 'Unnamed', createdAt: new Date(u.created_at).toISOString() })),
+      funnel: {
+        steps: (
+          [
+            ['VISITED', f.visited, f.visited_prev],
+            ['VIEWED', f.viewed, f.viewed_prev],
+            ['CONTACTED', f.contacted, f.contacted_prev],
+            ['PAYWALL', f.paywall, f.paywall_prev],
+            ['PURCHASED', f.bought, f.bought_prev],
+          ] as const
+        ).map(([step, cur, prev]) => ({ step, count: Number(cur ?? 0), previous: Number(prev ?? 0) })),
+        signinPrompts: delta(f.prompts, f.prompts_prev),
+        signins: delta(f.signins, f.signins_prev),
+        listingViews: delta(f.views, f.views_prev),
+        signedOutViewShare: Number(f.views) ? Number(f.views_signed_out) / Number(f.views) : 0,
+        tracking: String(f.tracking) === 'true',
+      },
+      topListings: topListings.map((t) => ({ id: t.id, title: t.title, locality: t.locality ?? '', views: Number(t.views), contacts: Number(t.contacts) })),
     };
   }
 

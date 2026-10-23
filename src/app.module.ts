@@ -2,6 +2,7 @@ import { Controller, Get, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { sql } from 'kysely';
 import { AdminController, AdminGuard } from './admin/admin.js';
+import { AnalyticsController } from './analytics/analytics.js';
 import { AuthGuard, Public } from './common/auth.js';
 import { RateLimitGuard } from './common/rate-limit.js';
 import { ApiExceptionFilter } from './common/exception.filter.js';
@@ -15,6 +16,7 @@ import {
 } from './flatmates/flatmates.js';
 import { GroupsController, GroupsService } from './groups/groups.js';
 import { ListingEditorService } from './listings/listing-editor.service.js';
+import { ListingCleanupService } from './listings/listing-cleanup.js';
 import {
   ListingDraftController,
   ListingsController,
@@ -69,6 +71,7 @@ class HealthController {
     PaymentsController,
     SafetyController,
     ContactController,
+    AnalyticsController,
     AdminController,
     VerificationsController,
     AvatarController,
@@ -88,6 +91,7 @@ class HealthController {
     VerificationsService,
     AvatarService,
     PassRemindersService,
+    ListingCleanupService,
     // Signed-in by default; routes opt out with @Public().
     { provide: APP_GUARD, useClass: AuthGuard },
     // After AuthGuard, so signed-in callers are limited per account rather than per IP.
