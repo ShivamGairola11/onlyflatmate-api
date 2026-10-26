@@ -14,6 +14,12 @@ export interface PassPlan {
   priceInr: Rupees;
 }
 
+/** A pass holder's discounted prices for the plans longer than the one they hold (see upgrade.ts). */
+export interface UpgradeOffer {
+  percentOff: number;
+  prices: Partial<Record<PassPlanId, Rupees>>;
+}
+
 export interface Payment {
   id: ID;
   userId: ID;

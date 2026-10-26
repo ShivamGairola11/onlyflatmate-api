@@ -105,10 +105,12 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
 | Plan | Days | ₹ | ₹/day |
 |---|---|---|---|
 | MINI | 3 | 99 | 33 |
-| PRO (default, "popular") | 7 | 149 | 21 |
-| MAX | 30 | 999 | 33 |
+| PRO (default, "popular") | 7 | 169 | 24 |
+| MAX | 30 | 369 | 12 |
 
-- `src/payments/payments.ts:25-29` ⇄ `basera/src/lib/config/app.ts:66-72`. Pre-plan passes = 7 days (`LEGACY_DAYS`).
+- `src/payments/payments.ts:26-30` ⇄ `basera/src/lib/config/app.ts:66-70`. Pre-plan passes = 7 days (`LEGACY_DAYS`).
+- **Upgrade discount (retention):** a user with any unexpired pass (stacked ones count) pays 15% less, rounded to whole rupees, for a plan longer than the longest one they hold: from Mini, Pro ₹144 / Max ₹314; from Pro, Max ₹314. The same plan or a shorter one costs the list price. Legacy plan-less passes count as Pro.
+  - The rule lives once in the web app's `src/features/payments/upgrade.ts` and is synced into `contract/` (also used by the mock API). The API applies it in `POST /payments/contact-pass/order`, so the charged amount is fixed server-side; `GET /contact-pass` returns `upgrade: { percentOff, prices }` for the UI. Test: `src/payments/upgrade.spec.ts`.
 - **Renewal stacks:** a new pass starts at `greatest(max(expires_at), now())`. No auto-renew. Active means `expires_at > now()`.
 - Reminder email 24 h before expiry (hourly job, `src/payments/pass-reminders.ts`). Phone-only accounts get no reminder.
 - **Paywall:**
@@ -216,7 +218,7 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
 
 | Rule | API | Web |
 |---|---|---|
-| Pass plans | `src/payments/payments.ts:25` | `src/lib/config/app.ts:66` |
+| Pass plans | `src/payments/payments.ts:26` | `src/lib/config/app.ts:66` |
 | Freshness 72 h / 14 d | `src/listings/listing.mapper.ts:6` | `src/lib/config/app.ts:84`, mock `listings.ts:20,83` |
 | Listing limits | `src/listings/listing-input.ts` | `src/lib/validation/listing.ts:45-103`, `listing-builder-steps.ts:19-21` |
 | Flatmate / group limits | `src/flatmates/flatmates.ts:150`, `src/groups/groups.ts:225` | `src/lib/validation/listing.ts:107-145` |
