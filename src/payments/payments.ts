@@ -14,6 +14,7 @@ import { sql } from 'kysely';
 import Razorpay from 'razorpay';
 import { z } from 'zod';
 import type { ContactPass, PassPlan, PassPlanId } from '@/features/payments/types';
+import { holderRank, planPrice, upgradeOffer } from '@/features/payments/upgrade';
 import type { ContactPassStatus } from '@/lib/api/contract';
 import { ApiError, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, Public } from '../common/auth.js';
@@ -24,8 +25,8 @@ import { RateLimit } from '../common/rate-limit.js';
 /** Same values as the web app's contactPassPlans. */
 export const PLANS: Record<PassPlanId, PassPlan> = {
   MINI: { id: 'MINI', name: 'Mini', days: 3, priceInr: 99 },
-  PRO: { id: 'PRO', name: 'Pro', days: 7, priceInr: 149 },
-  MAX: { id: 'MAX', name: 'Max', days: 30, priceInr: 999 },
+  PRO: { id: 'PRO', name: 'Pro', days: 7, priceInr: 169 },
+  MAX: { id: 'MAX', name: 'Max', days: 30, priceInr: 369 },
 };
 /** Passes bought before plans existed were all a week. */
 const LEGACY_DAYS = 7;
@@ -78,19 +79,26 @@ const toPass = (p: {
 export class PaymentsController {
   constructor(@InjectDb() private readonly db: Database) {}
 
-  @Get('contact-pass')
-  async status(@CurrentUser() user: AuthUser): Promise<ContactPassStatus> {
-    const pass = await this.db
+  /** The user's unexpired passes (stacked ones included), latest expiry first. */
+  private activePasses(userId: string) {
+    return this.db
       .selectFrom('contact_passes')
       .selectAll()
-      .where('user_id', '=', user.id)
+      .where('user_id', '=', userId)
       .where('expires_at', '>', new Date())
       .orderBy('expires_at', 'desc')
-      .executeTakeFirst();
+      .execute();
+  }
+
+  @Get('contact-pass')
+  async status(@CurrentUser() user: AuthUser): Promise<ContactPassStatus> {
+    const passes = await this.activePasses(user.id);
+    const plans = Object.values(PLANS);
     return {
-      active: !!pass,
-      pass: pass && toPass(pass),
-      plans: Object.values(PLANS),
+      active: passes.length > 0,
+      pass: passes[0] && toPass(passes[0]),
+      plans,
+      upgrade: upgradeOffer(plans, holderRank(passes.map((p) => p.plan as PassPlanId | null))),
     };
   }
 
@@ -99,12 +107,15 @@ export class PaymentsController {
   @Post('payments/contact-pass/order')
   async order(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const plan = PLANS[z.object({ plan: z.enum(['MINI', 'PRO', 'MAX']) }).parse(body).plan];
+    // Holders moving up to a longer plan get the upgrade discount; the price is decided here, never by the client.
+    const passes = await this.activePasses(user.id);
+    const amount = planPrice(plan, holderRank(passes.map((p) => p.plan as PassPlanId | null)));
     let providerOrderId = `order_${randomUUID()}`;
     if (razorpay) {
       // Razorpay charges in paise. The amount is fixed here, server-side, so the client can't change it.
       const order = await razorpay.orders
         .create({
-          amount: plan.priceInr * 100,
+          amount: amount * 100,
           currency: 'INR',
           receipt: `cp_${randomUUID().slice(0, 32)}`,
           notes: { userId: user.id, purpose: 'CONTACT_PASS', plan: plan.id },
@@ -121,7 +132,7 @@ export class PaymentsController {
       .insertInto('payments')
       .values({
         user_id: user.id,
-        amount: plan.priceInr,
+        amount,
         plan: plan.id,
         provider: razorpay ? 'RAZORPAY' : 'MOCK',
         provider_order_id: providerOrderId,

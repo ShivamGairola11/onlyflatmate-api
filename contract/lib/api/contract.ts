@@ -22,7 +22,7 @@ import type {
   UpdateListingInput,
 } from "@/features/listings/types";
 import type { Conversation, CreateConversationInput, Message, MessagingEvent } from "@/features/messaging/types";
-import type { ConfirmPaymentInput, ContactPass, PassPlan, PassPlanId, PaymentMethod, PaymentOrder, PaymentProvider, PaymentStatus } from "@/features/payments/types";
+import type { ConfirmPaymentInput, ContactPass, PassPlan, PassPlanId, PaymentMethod, PaymentOrder, PaymentProvider, PaymentStatus, UpgradeOffer } from "@/features/payments/types";
 import type { IdDocumentType, Profile, User, UserMode, Verification, VerificationStatus, VerificationType } from "@/features/profiles/types";
 import type { CityId } from "@/lib/constants/places";
 import type { ListingDraft } from "@/lib/validation/listing";
@@ -117,6 +117,8 @@ export interface ContactPassStatus {
   active: boolean;
   pass?: ContactPass;
   plans: PassPlan[];
+  /** Holders only, when a longer plan exists: what each longer plan costs them now. Charged server-side. */
+  upgrade?: UpgradeOffer;
 }
 
 export interface AdminStats {
