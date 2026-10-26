@@ -80,7 +80,7 @@ Principle (decided 2026-10-22): **gate actions, not property discovery.** Listin
 `track()` in `basera/src/lib/analytics.ts` pushes to the GTM `dataLayer` (GTM runs in production only). Properties are ids, page type, auth state, plan and amount only — never names, contact details or message text.
 
 **First-party copy for the admin dashboard:**
-- **Where events go:** in http mode, every event except `pass_purchased` is also sent to `POST /analytics/events` (`src/analytics/analytics.ts`; public, 120/min).
+- **Where events go:** in http mode, every event except `pass_purchased` and `listing_published` is also sent to `POST /analytics/events` (`src/analytics/analytics.ts`; public, 120/min).
   - It's stored in `analytics_events` with a random browser `visitor_id` (localStorage `ff.vid`; no fingerprinting) and `user_id` when signed in.
   - Event names are allowlisted. Props are allowlisted keys with primitive values ≤ 64 chars; anything else is dropped.
 - **Retention:** 180 days (pruned by the hourly cleanup job).
@@ -96,6 +96,7 @@ Principle (decided 2026-10-22): **gate actions, not property discovery.** Listin
 | `contact_click` | Contact / Connect pressed | `context_type`, `context_id`, `signed_in` |
 | `paywall_shown` | Contact Pass checkout opens | `source` (`contact`/`direct`), `context_type` |
 | `pass_purchased` | after `POST /payments/confirm` succeeds (server-verified) | `plan`, `value`, `currency` |
+| `listing_published` | a new listing is created from the Have a Place wizard (GTM only, like `pass_purchased`; the dashboard counts new listings from the `listings` table) | `listing_id`, `listing_type`, `source` |
 
 No A/B test is running: there's no assignment or experiment framework. See `review.md` §1.
 
