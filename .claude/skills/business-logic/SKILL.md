@@ -55,7 +55,7 @@ Principle (decided 2026-10-22): **gate actions, not property discovery.** Listin
   - `LockedPanel` (`sign-in-gate.tsx`).
   - Flatmate and group pages lock on `useSignedOut() || <id field empty>`, so the server-rendered HTML locks too.
   - There is no listing gate any more. There's no middleware either.
-- **Sign-in methods:** Google, Facebook and email/password. Google/Facebook share `GET /api/auth/{provider}/url` (allowlist `OAUTH_PROVIDERS`, `basera/src/features/auth/types`) and `/api/auth/callback`; each must also be enabled in Supabase. **Phone OTP is off** (`PHONE_SIGNIN = false`, `basera/src/features/auth/components/auth-dialog.tsx:15`).
+- **Sign-in methods:** Google and email/password. **Facebook is off** (`FACEBOOK_SIGNIN = false` in `auth-dialog.tsx`; waiting on Meta business verification). Google/Facebook share `GET /api/auth/{provider}/url` (allowlist `OAUTH_PROVIDERS`, `basera/src/features/auth/types`) and `/api/auth/callback`; each must also be enabled in Supabase. **Phone OTP is off** (`PHONE_SIGNIN = false`, `basera/src/features/auth/components/auth-dialog.tsx:15`).
 - **Mock mode** (`NEXT_PUBLIC_API_MODE=mock`) doesn't trim fields; its people pages still lock via `useSignedOut`.
 
 ### Resume after sign-in
