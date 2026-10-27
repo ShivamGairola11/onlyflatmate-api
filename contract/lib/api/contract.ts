@@ -7,7 +7,7 @@
  * (REST calls to the future NestJS backend). UI code never knows which one
  * is active. Method signatures here should map 1:1 to NestJS controller routes.
  */
-import type { DemoPersona, OtpChallenge, Session } from "@/features/auth/types";
+import type { DemoPersona, OAuthProvider, OtpChallenge, Session } from "@/features/auth/types";
 import type { Commute, CommuteRoute } from "@/features/commute/types";
 import type { FlatmateProfile, FlatmateProfileInput, FlatmateSearchParams } from "@/features/flatmates/types";
 import type { AddMemberInput, CreateGroupInput, FlatGroup, GroupMatch, UpdateGroupInput } from "@/features/groups/types";
@@ -333,7 +333,7 @@ export interface ApiClient {
     requestOtp(phone: string): Promise<OtpChallenge>;
     verifyOtp(challengeId: string, code: string): Promise<Session>;
     /** Where to send the browser to start Google sign-in. The BFF handles the callback, sets the cookie and redirects to `returnTo`. */
-    googleSignInUrl(returnTo: string): Promise<{ url: string }>;
+    oauthSignInUrl(provider: OAuthProvider, returnTo: string): Promise<{ url: string }>;
     /** Creates an account; a confirmation link is emailed, and the account can't sign in until it's opened. */
     signUpWithEmail(email: string, password: string, returnTo: string): Promise<void>;
     signInWithEmail(email: string, password: string): Promise<Session>;
