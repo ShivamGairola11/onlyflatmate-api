@@ -337,6 +337,10 @@ export interface ApiClient {
     /** Creates an account; a confirmation link is emailed, and the account can't sign in until it's opened. */
     signUpWithEmail(email: string, password: string, returnTo: string): Promise<void>;
     signInWithEmail(email: string, password: string): Promise<Session>;
+    /** Emails a reset link (same answer whether or not the account exists). The link signs them in on /reset-password. */
+    requestPasswordReset(email: string): Promise<void>;
+    /** Signed in from a reset link: set a new password. */
+    setPassword(password: string): Promise<void>;
     /** Development and demo builds only: sign in as a seeded persona. Production returns 404. */
     devSignIn(persona: DemoPersona): Promise<Session>;
     signOut(): Promise<void>;
