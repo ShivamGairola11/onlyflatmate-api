@@ -230,7 +230,7 @@ export interface Payments {
   provider_payment_id: string | null;
   purpose: Generated<string>;
   status: Generated<string>;
-  user_id: string;
+  user_id: string | null;
 }
 
 export interface Photos {

@@ -198,6 +198,10 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
   - ⚠ Unban returns **all** REMOVED listings to EXPIRED.
 - **Support:** `POST /contact`. Topics GENERAL/PAYMENTS/LISTING/ACCOUNT/GRIEVANCE; 5 per hour; stored, then emailed to `SUPPORT_EMAIL`. ⚠ There is no admin screen to read the stored messages.
 - **Legal:** users must be 18+. Grievance acknowledged in 24 h, resolved in 15 days. Data deleted within 30 days of account deletion.
+- **Account deletion** (self-serve; required by Google/Facebook sign-in): `DELETE /users/me` (5/h, `src/users/users.service.ts` `deleteAccount`) → web "Delete account" on `/profile`; public steps at `/delete-account` (the data deletion URL given to Facebook).
+  - Deletes the Supabase auth user; the profile and everything under it cascade (listings, photos, chats/messages, groups, passes, verifications, reports, blocks). Files under `<userId>/` in `listing-photos`, `avatars`, `avatar-uploads`, `id-documents` are removed after.
+  - An active pass ends with no refund. **Payments are kept** with `user_id = null` (migration `20261027000000`); admin payments list shows them as "Deleted account". `grantPass` refuses a payment with no user (409); the Razorpay webhook skips it, so a capture landing after deletion needs a manual refund.
+  - Old tokens stop working within 30 s (a missing user counts as banned).
 
 ## Platform guards
 
@@ -211,6 +215,7 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
 - **API unit:** `npx vitest run src/common/visibility.spec.ts` (the field policy).
 - **API e2e** (local Supabase, `npm run db:start`; apply new migrations with `npx supabase migration up --local`): `npm run test:e2e`.
   - `test/access.e2e-spec.ts` creates 130 fresh listings and removes them afterwards.
+  - `test/account-delete.e2e-spec.ts`: deleting removes the user and profile, keeps the payment detached.
   - It covers: public listing fields, the residents/lister trim, paging past 120, the batch trim, blocks both ways (404, same message), flatmate and group trims, matches 401, sign-in for save/contact, and 402 without a pass.
 - **Web self-checks:** `npx tsx scripts/check-pending-action.ts`, `check-safe-return-to.ts`, `check-contact-info.ts`.
 

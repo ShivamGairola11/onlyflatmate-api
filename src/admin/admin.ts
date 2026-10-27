@@ -494,8 +494,9 @@ export class AdminController {
     const { q, status, page } = listQuery.parse(query);
     const rows = await this.db
       .selectFrom('payments as pa')
-      .innerJoin('profiles as p', 'p.user_id', 'pa.user_id')
-      .innerJoin('auth.users as u', 'u.id', 'pa.user_id')
+      // Left joins: a deleted account's payments stay listed (user_id is null) so they can still be refunded.
+      .leftJoin('profiles as p', 'pa.user_id', 'pa.user_id')
+      .leftJoin('auth.users as u', 'u.id', 'pa.user_id')
       .leftJoin('contact_passes as c', 'c.payment_id', 'pa.id')
       .select([
         'pa.id',
@@ -535,7 +536,7 @@ export class AdminController {
       .execute();
     const items = rows.map((r): AdminPayment => ({
       id: r.id,
-      user: ref(r),
+      user: ref({ ...r, user_id: r.user_id ?? '', display_name: r.user_id ? r.display_name : 'Deleted account' }),
       amount: r.amount,
       provider: r.provider as AdminPayment['provider'],
       providerOrderId: r.provider_order_id,

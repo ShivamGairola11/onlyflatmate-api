@@ -262,6 +262,8 @@ export class PaymentsController {
     // Not one of our Contact Pass orders, the amount doesn't match, or it's already settled
     // (retries and replays must never undo a refund): nothing to grant.
     if (!payment || p.amount !== payment.amount * 100 || payment.status === 'SUCCEEDED' || payment.status === 'REFUNDED') return { ok: true };
+    // The buyer deleted their account before the capture landed: no one to give a pass to. Admins refund it.
+    if (!payment.user_id) return { ok: true };
 
     await grantPass(this.db, payment, p.id, RZP_METHOD[p.method]);
     return { ok: true };
@@ -274,12 +276,14 @@ export class PaymentsController {
  */
 export function grantPass(
   db: Database,
-  payment: { id: string; user_id: string; method: string | null; plan: string | null },
+  payment: { id: string; user_id: string | null; method: string | null; plan: string | null },
   providerPaymentId: string,
   method?: Method,
   /** Only for plan-less payments (admin complimentary passes). */
   days = LEGACY_DAYS,
 ) {
+  const userId = payment.user_id;
+  if (!userId) throw paymentFailed('The account for this payment was deleted.', 409);
   if (payment.plan) days = PLANS[payment.plan as PassPlanId].days;
   return db.transaction().execute(async (trx) => {
     const updated = await trx
@@ -299,13 +303,13 @@ export function grantPass(
     const { from } = await trx
       .selectFrom('contact_passes')
       .select(sql<Date>`greatest(max(expires_at), now())`.as('from'))
-      .where('user_id', '=', payment.user_id)
+      .where('user_id', '=', userId)
       .executeTakeFirstOrThrow();
     const startsAt = new Date(from);
     await trx
       .insertInto('contact_passes')
       .values({
-        user_id: payment.user_id,
+        user_id: userId,
         payment_id: payment.id,
         plan: payment.plan,
         starts_at: startsAt,

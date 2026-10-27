@@ -471,6 +471,8 @@ export interface ApiClient {
     useProviderAvatar(): Promise<{ avatarUrl: string }>;
     removeAvatar(): Promise<void>;
     update(patch: Partial<Profile>): Promise<Profile>;
+    /** Permanent: the account and everything under it. Payment records are kept, detached. */
+    deleteAccount(): Promise<void>;
   };
   support: {
     /** The /contact form; works signed out. Saved, then emailed to the support inbox. */

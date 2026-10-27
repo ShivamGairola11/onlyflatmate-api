@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Patch } from '@nestjs/common';
 import { z } from 'zod';
 import { type AuthUser, CurrentUser } from '../common/auth.js';
 import { assertNoContactInfo } from '../common/contact-info.js';
@@ -53,5 +53,13 @@ export class UsersController {
   setMode(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const { mode } = z.object({ mode: z.enum(['SEEKING', 'OFFERING']) }).parse(body);
     return this.users.setMode(user.id, mode);
+  }
+
+  /** Permanent. The web app signs the device out afterwards. */
+  @RateLimit(5, 3600)
+  @Delete()
+  @HttpCode(204)
+  remove(@CurrentUser() user: AuthUser) {
+    return this.users.deleteAccount(user.id);
   }
 }
