@@ -86,6 +86,7 @@ Principle (decided 2026-10-22): **gate actions, not property discovery.** Listin
 - **Retention:** 180 days (pruned by the hourly cleanup job).
 - **Purchases:** the funnel reads them from `payments` (distinct paying users), so they can't be faked from a browser.
 - **Admin overview** (`GET /admin/overview`): `funnel` (distinct visitors per step VISITED → VIEWED → CONTACTED → PAYWALL → PURCHASED, vs the previous period), sign-in completion, signed-out view share, `topListings`, and daily visitors/views/contacts.
+  - `replies`: seeker-started chats whose first message is in the range and 24 h+ old, how many were answered within 24 h (vs the previous period), the median hours to the first reply, the 8 cities with the most listing chats, and reply-guarantee credits. The chat query is shared with the paywall proof: `seekerChats()` in `src/payments/reply-guarantee.ts`.
 - Tests: `test/analytics.e2e-spec.ts`.
 
 | Event | Fired | Props |
@@ -127,11 +128,17 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
   - Razorpay (UPI/card/netbanking). The server fixes the amount and verifies the HMAC signature, order and amount, captures if needed, and is idempotent.
   - Webhook `payment.captured` is the backup path.
   - `PAYMENTS_PROVIDER=mock` grants without checks. Production refuses mock **only if `NODE_ENV=production`** (`src/config.ts:57`).
+- **Reply guarantee (decided 2026-10-28: extra days, never a refund):** if nobody replies within **48 h** of the seeker's first message in a chat they started on a paid pass, that pass earns **3 days**, once. `REPLY_GUARANTEE` in the web app's `src/features/payments/reply-guarantee.ts`, synced into `contract/` (one copy).
+  - Hourly job `ReplyGuaranteeService` (`src/payments/reply-guarantee.ts`). "No reply" = no message from anyone else, in any chat the seeker started, between their first message and 48 h later. Only chats *created* while the pass ran count, and the seeker must have written in them.
+  - The days go onto the user's **latest** pass (`greatest(expires_at, now()) + 3 days`), so it also reopens a lapsed pass and unlocks locked messages. Settled in `contact_passes.reply_guarantee_at` / `reply_guarantee_days` (claimed in a transaction, so it's safe on several instances). Email to the seeker; phone-only accounts get none.
+  - Excluded: complimentary (₹0) and refunded payments, banned users, passes whose first message is over 7 days old (missed runs), and **revoked** passes (revoke stamps `reply_guarantee_at` with no days).
+  - Copy: checkout dialog, /contact-pass, listing contact card, FAQ, Refund Policy (`#reply-guarantee`), Terms.
+- **Paywall proof:** `GET /contact-pass/proof?city=` (public, 60/min, cached 10 min per instance) → live listings (ACTIVE, confirmed within 14 d; city matched case-insensitively) and `replyRate24h` = share of seeker-started chats from the last 30 days answered within 24 h, counting only chats a day old or more. `null` under **20** chats, so a thin start isn't advertised. The reply rate is platform-wide, not per city.
 - **Admin money actions:**
   - Refund (SUCCEEDED and > ₹0 only; the pass ends now).
   - Sync from Razorpay.
   - Extend or comp-grant, 1–365 days (comp = a ₹0 MOCK payment, not refundable).
-  - Revoke.
+  - Revoke (also voids the reply guarantee).
 - **Refund policy (legal):** only when a payment was taken without a pass, or for a duplicate charge, requested within 30 days.
 
 ## Listings
@@ -216,6 +223,8 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
 - **API e2e** (local Supabase, `npm run db:start`; apply new migrations with `npx supabase migration up --local`): `npm run test:e2e`.
   - `test/access.e2e-spec.ts` creates 130 fresh listings and removes them afterwards.
   - `test/account-delete.e2e-spec.ts`: deleting removes the user and profile, keeps the payment detached.
+  - `test/pass-reminders.e2e-spec.ts`: one reminder 24 h before expiry, none for renewed or later passes, a failed send is retried. (Any failed send logs `Not sent (...)` with Resend's status, from `src/common/email.ts`.)
+  - `test/reply-guarantee.e2e-spec.ts`: an unanswered paid pass gets 3 days exactly once; answered, complimentary and under-48 h passes don't; the proof endpoint works signed out.
   - It covers: public listing fields, the residents/lister trim, paging past 120, the batch trim, blocks both ways (404, same message), flatmate and group trims, matches 401, sign-in for save/contact, and 402 without a pass.
 - **Web self-checks:** `npx tsx scripts/check-pending-action.ts`, `check-safe-return-to.ts`, `check-contact-info.ts`.
 

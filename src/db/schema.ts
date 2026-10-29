@@ -59,6 +59,8 @@ export interface ContactPasses {
   payment_id: string;
   plan: string | null;
   reminder_sent_at: Timestamp | null;
+  reply_guarantee_at: Timestamp | null;
+  reply_guarantee_days: number | null;
   starts_at: Generated<Timestamp>;
   user_id: string;
 }

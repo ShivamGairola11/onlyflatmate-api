@@ -38,6 +38,7 @@ import {
   STALE_AFTER_HOURS,
 } from '../listings/listing.mapper.js';
 import { grantPass, RZP_METHOD, razorpay } from '../payments/payments.js';
+import { seekerChats } from '../payments/reply-guarantee.js';
 import { ID_BUCKET } from '../verifications/verifications.js';
 
 const PAGE_SIZE = 25;
@@ -230,7 +231,7 @@ export class AdminController {
     const prevStart = sql`(((now() at time zone ${IST})::date - ${2 * days - 1}::int)::timestamp at time zone ${IST})`;
     const run = async <T>(q: ReturnType<typeof sql<T>>) => (await q.execute(this.db)).rows;
 
-    const [daily, kpis, outcomes, methods, listings, localities, attention, recentPayments, recentUsers, funnel, topListings] = await Promise.all([
+    const [daily, kpis, outcomes, methods, listings, localities, attention, recentPayments, recentUsers, funnel, topListings, replies, replyCities] = await Promise.all([
       run(sql<{ date: string; revenue: string; passes: string; signups: string; messages: string; visitors: string; views: string; contacts: string }>`
         with d as (select generate_series(${start}::timestamptz, now(), interval '1 day') as ts)
         select to_char((d.ts at time zone ${IST})::date, 'YYYY-MM-DD') as date,
@@ -320,7 +321,25 @@ export class AdminController {
           from analytics_events where created_at >= ${start} and name in ('listing_view', 'contact_click') group by 1
         ) x join listings l on l.id::text = x.id
         order by x.views desc, x.contacts desc limit 6`),
+      // Lister replies: seeker-started chats whose first message is in the range and at least a day old.
+      run(sql<Record<string, string | null>>`
+        with s as (${seekerChats(prevStart)}),
+             w as (select s.*, s.asked >= ${start} as cur, s.answered <= s.asked + interval '24 hours' as fast
+                   from s where s.asked >= ${prevStart} and s.asked <= now() - interval '24 hours')
+        select count(*) filter (where cur) as started, count(*) filter (where not cur) as started_prev,
+               count(*) filter (where cur and fast) as answered, count(*) filter (where not cur and fast) as answered_prev,
+               percentile_cont(0.5) within group (order by extract(epoch from answered - asked) / 3600) filter (where cur and answered is not null) as median_hours,
+               (select count(*) from contact_passes where reply_guarantee_days is not null and reply_guarantee_at >= ${start}) as credits,
+               (select count(*) from contact_passes where reply_guarantee_days is not null and reply_guarantee_at >= ${prevStart} and reply_guarantee_at < ${start}) as credits_prev
+        from w`),
+      run(sql<{ city: string; started: string; answered: string }>`
+        with s as (${seekerChats(start)})
+        select l.city, count(*) as started, count(*) filter (where s.answered <= s.asked + interval '24 hours') as answered
+        from s join listings l on s.context_type = 'LISTING' and l.id = s.context_id
+        where s.asked >= ${start} and s.asked <= now() - interval '24 hours' and l.city is not null
+        group by l.city order by count(*) desc, l.city limit 8`),
     ]);
+    const rp = replies[0]!;
     const f = funnel[0]!;
 
     const k = kpis[0]!;
@@ -365,6 +384,13 @@ export class AdminController {
         tracking: String(f.tracking) === 'true',
       },
       topListings: topListings.map((t) => ({ id: t.id, title: t.title, locality: t.locality ?? '', views: Number(t.views), contacts: Number(t.contacts) })),
+      replies: {
+        started: delta(rp.started ?? undefined, rp.started_prev ?? undefined),
+        answered24h: delta(rp.answered ?? undefined, rp.answered_prev ?? undefined),
+        medianHours: rp.median_hours === null || rp.median_hours === undefined ? null : Number(rp.median_hours),
+        byCity: replyCities.map((c) => ({ city: c.city, started: Number(c.started), answered24h: Number(c.answered) })),
+        guaranteeCredits: delta(rp.credits ?? undefined, rp.credits_prev ?? undefined),
+      },
     };
   }
 
@@ -755,7 +781,8 @@ export class AdminController {
   ) {
     const r = await this.db
       .updateTable('contact_passes')
-      .set({ expires_at: new Date() })
+      // Settling the reply guarantee (with no days) stops the hourly job handing a revoked pass time back.
+      .set({ expires_at: new Date(), reply_guarantee_at: sql<Date>`coalesce(reply_guarantee_at, now())` })
       .where('id', '=', id)
       .where('expires_at', '>', new Date())
       .executeTakeFirst();

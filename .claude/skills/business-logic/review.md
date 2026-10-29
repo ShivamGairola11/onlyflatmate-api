@@ -66,7 +66,7 @@ Legend: **P0** = fix before real traffic or money · **P1** = hurts conversion o
 | Copy says | Code does | Fix |
 |---|---|---|
 | "Takes 30 seconds with your phone number" (`contact-pass-view.tsx:238`); privacy page describes OTP | Phone sign-in is off | Turn OTP on or change the copy |
-| FAQ and reminder email: "you can still read your conversations" | Messages after lapse are locked | Say "your history stays; new replies unlock when you renew" |
+| ~~FAQ and reminder email: "you can still read your conversations"~~ | Fixed 2026-10-28: both now say new replies stay locked until renewal | — |
 | Pass covers "rooms, flats, flatmates and **groups**" | No UI to message a group | Add "Message group" or drop "groups" from the copy |
 | Contact-info error: "Keep the conversation on **Basera**" | Brand is FindFlatmates | Use `appConfig.name` |
 | 402 message: "contact listers" | Also fires for flatmates and groups | Generic wording |
@@ -105,6 +105,14 @@ The rate limiter, SSE bus and commute cache are in-memory per instance, so they 
 ---
 
 ## Decided
+
+- **2026-10-28 — Reply guarantee, paywall proof, reply-rate dashboard** (product owner, after the founder-board review: "the paid moment depends on someone else" and "no traction numbers"). What's implemented:
+  - No reply within 48 h of the first message on a paid pass → 3 more days, once. Extra days, **not** a refund; the refund policy is unchanged apart from saying so.
+  - The paywall shows live listings in the city and the lister reply rate (once there are 20+ chats), plus the guarantee.
+  - The admin overview gains "Do listers answer?": the 24 h reply rate, the median time to reply, the rate by city, and guarantee credits.
+  - The checkout warns before payment when the listing is STALE.
+  - Details: `SKILL.md` → Contact Pass.
+  - **Still open:** whether to focus on one city or cluster (board condition); freezing groups and ID review; "first contact free" (§2), which overlaps with the guarantee. Decide it with the reply-rate data.
 
 - **2026-10-22 — Gate actions, not property discovery** (product owner). What's implemented:
   - Listing details are public in the API and the UI.

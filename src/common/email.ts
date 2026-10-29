@@ -10,7 +10,10 @@ const log = new Logger('Email');
  */
 export async function sendEmail(to: string, subject: string, { html, text }: EmailBody, replyTo?: string): Promise<boolean> {
   if (!config.RESEND_API_KEY) {
-    if (process.env.NODE_ENV === 'production') return false;
+    if (process.env.NODE_ENV === 'production') {
+      log.error(`Not sent ("${subject}"): RESEND_API_KEY is not set`);
+      return false;
+    }
     log.warn(`[dev] Email to ${to}: ${subject}\n${text}\n(set RESEND_API_KEY to send real emails)`);
     return true;
   }
@@ -19,6 +22,11 @@ export async function sendEmail(to: string, subject: string, { html, text }: Ema
     headers: { Authorization: `Bearer ${config.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: config.EMAIL_FROM, to: [to], subject, html, text, reply_to: replyTo }),
     signal: AbortSignal.timeout(8000),
-  }).catch(() => undefined);
+  }).catch((e: Error) => {
+    log.error(`Not sent ("${subject}"): ${e.message}`);
+    return undefined;
+  });
+  // Callers retry on false; without this line a bad key or unverified domain fails silently forever.
+  if (res && !res.ok) log.error(`Not sent ("${subject}"): Resend ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);
   return !!res?.ok;
 }

@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   Post,
+  Query,
   type RawBodyRequest,
   Req,
 } from '@nestjs/common';
@@ -15,12 +16,14 @@ import Razorpay from 'razorpay';
 import { z } from 'zod';
 import type { ContactPass, PassPlan, PassPlanId } from '@/features/payments/types';
 import { holderRank, planPrice, upgradeOffer } from '@/features/payments/upgrade';
-import type { ContactPassStatus } from '@/lib/api/contract';
+import type { ContactPassProof, ContactPassStatus } from '@/lib/api/contract';
 import { ApiError, notFound } from '../common/api-error.js';
 import { type AuthUser, CurrentUser, Public } from '../common/auth.js';
 import { config } from '../config.js';
 import { type Database, InjectDb } from '../db/db.module.js';
 import { RateLimit } from '../common/rate-limit.js';
+import { EXPIRE_AFTER_HOURS } from '../listings/listing.mapper.js';
+import { seekerChats } from './reply-guarantee.js';
 
 /** Same values as the web app's contactPassPlans. */
 export const PLANS: Record<PassPlanId, PassPlan> = {
@@ -30,6 +33,11 @@ export const PLANS: Record<PassPlanId, PassPlan> = {
 };
 /** Passes bought before plans existed were all a week. */
 const LEGACY_DAYS = 7;
+
+/** The paywall shows a reply rate only once this many chats back it, so a thin start isn't advertised. */
+const PROOF_MIN_CHATS = 20;
+const PROOF_TTL_MS = 10 * 60_000;
+const proofCache = new Map<string, { at: number; value: ContactPassProof }>();
 
 /** Null in mock mode. config.ts guarantees both keys are set when the provider is razorpay. */
 export const razorpay =
@@ -100,6 +108,29 @@ export class PaymentsController {
       plans,
       upgrade: upgradeOffer(plans, holderRank(passes.map((p) => p.plan as PassPlanId | null))),
     };
+  }
+
+  /** The paywall's proof: live listings (in a city, or everywhere) and how often listers answer. Public; cached. */
+  @Public()
+  @RateLimit(60, 60)
+  @Get('contact-pass/proof')
+  async proof(@Query() query: unknown): Promise<ContactPassProof> {
+    const { city } = z.object({ city: z.string().trim().min(1).max(60).optional() }).parse(query);
+    const key = city?.toLowerCase() ?? '';
+    const hit = proofCache.get(key);
+    if (hit && hit.at > Date.now() - PROOF_TTL_MS) return hit.value;
+    const { rows } = await sql<{ live: string; chats: string; fast: string }>`
+      select (select count(*) from public.listings where status = 'ACTIVE' and last_confirmed_at > now() - make_interval(hours => ${EXPIRE_AFTER_HOURS})
+                ${city ? sql`and lower(city) = ${key}` : sql``}) as live,
+             count(*) as chats, count(*) filter (where s.answered <= s.asked + interval '24 hours') as fast
+      from (${seekerChats(sql`now() - interval '30 days'`)}) s
+      where s.asked <= now() - interval '24 hours'`.execute(this.db);
+    const chats = Number(rows[0]!.chats);
+    const value = { liveListings: Number(rows[0]!.live), city, replyRate24h: chats >= PROOF_MIN_CHATS ? Number(rows[0]!.fast) / chats : null };
+    // ponytail: per-instance cache keyed by whatever city callers send; cleared wholesale if it ever grows past the 8 real ones by much.
+    if (proofCache.size > 50) proofCache.clear();
+    proofCache.set(key, { at: Date.now(), value });
+    return value;
   }
 
   /** Step 1 of checkout: an order the payment provider will charge against. */

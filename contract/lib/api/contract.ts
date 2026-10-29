@@ -121,6 +121,15 @@ export interface ContactPassStatus {
   upgrade?: UpgradeOffer;
 }
 
+/** Public proof for the paywall (`GET /contact-pass/proof`). */
+export interface ContactPassProof {
+  /** Listings in search right now (active, confirmed within 14 days): in `city` when one was asked for, else everywhere. */
+  liveListings: number;
+  city?: string;
+  /** Share (0–1) of seeker-started chats in the last 30 days answered within 24 h. Null under 20 chats, so a thin start isn't shown. */
+  replyRate24h: number | null;
+}
+
 export interface AdminStats {
   listings: number;
   activeListings: number;
@@ -204,6 +213,19 @@ export interface AdminOverview {
   };
   /** Most-viewed listings in the range, with contact clicks on them. */
   topListings: { id: ID; title: string; locality: string; views: number; contacts: number }[];
+  /**
+   * Do listers answer? Seeker-started chats whose first message falls in the range and is 24 h+ old (younger
+   * ones are still waiting), and how many got a reply within 24 h. Listing chats only in `byCity`.
+   */
+  replies: {
+    started: AdminDelta;
+    answered24h: AdminDelta;
+    /** Median hours from the seeker's first message to the first reply, among answered chats; null with none. */
+    medianHours: number | null;
+    byCity: { city: string; started: number; answered24h: number }[];
+    /** Passes the reply guarantee extended in the range. */
+    guaranteeCredits: AdminDelta;
+  };
 }
 
 export interface AdminQuery {
@@ -461,6 +483,8 @@ export interface ApiClient {
   };
   payments: {
     contactPassStatus(): Promise<ContactPassStatus>;
+    /** Public: no session needed. */
+    contactPassProof(city?: string): Promise<ContactPassProof>;
     createContactPassOrder(plan: PassPlanId): Promise<PaymentOrder>;
     confirmPayment(input: ConfirmPaymentInput): Promise<ContactPass>;
   };

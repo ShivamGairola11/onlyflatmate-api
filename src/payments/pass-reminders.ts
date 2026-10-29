@@ -63,7 +63,7 @@ export class PassRemindersService implements OnModuleInit, OnApplicationShutdown
           preview: `Your pass ends on ${istTime(new Date(r.expires_at))}. Renew without losing a day.`,
           heading: `Hi ${first}, your pass ends tomorrow`,
           paragraphs: [
-            `Your FindFlatmates Contact Pass ends on ${istTime(new Date(r.expires_at))}. After that you can still read your conversations, but you'll need a pass to send messages or start new ones.`,
+            `Your FindFlatmates Contact Pass ends on ${istTime(new Date(r.expires_at))}. After that your conversations stay saved, but new replies stay locked and you'll need a pass to send messages or start new ones.`,
             "Still looking? Renew now. The new pass starts when this one ends, so you don't lose any days.",
           ],
           cta: { label: 'Renew Contact Pass', url: `${config.WEB_URL}/contact-pass` },
