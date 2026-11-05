@@ -49,7 +49,7 @@ describe('Feed (e2e)', () => {
     expect(dates).toEqual([...dates].sort((a, b) => b - a));
     expect(body.items[0].poster.name).toBeTruthy();
     expect(body.items[0]).toMatchObject({ likedByMe: false });
-    await http().get('/feed?city=atlantis').expect(400);
+    await http().get('/feed?city=atlantis').expect(422);
   });
 
   it('likes once per person, and unlikes', async () => {
@@ -65,7 +65,7 @@ describe('Feed (e2e)', () => {
 
   it('takes comments without contact details; the author or the lister can delete them', async () => {
     const auth = { Authorization: `Bearer ${viewerToken}` };
-    await http().post(`/listings/${listingId}/comments`).set(auth).send({ body: 'Call me on 98765 43210' }).expect(400);
+    await http().post(`/listings/${listingId}/comments`).set(auth).send({ body: 'Call me on 98765 43210' }).expect(422);
     const mine = (await http().post(`/listings/${listingId}/comments`).set(auth).send({ body: 'Is it still available?' }).expect(201)).body;
     expect(mine).toMatchObject({ body: 'Is it still available?', canDelete: true });
 
