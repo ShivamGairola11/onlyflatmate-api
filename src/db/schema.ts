@@ -278,6 +278,20 @@ export interface Reports {
   target_type: string;
 }
 
+export interface ListingComments {
+  author_id: string;
+  body: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  listing_id: string;
+}
+
+export interface ListingLikes {
+  created_at: Generated<Timestamp>;
+  listing_id: string;
+  user_id: string;
+}
+
 export interface SavedListings {
   id: Generated<string>;
   listing_id: string;
@@ -318,7 +332,9 @@ export interface DB {
   group_members: GroupMembers;
   groups: Groups;
   landmarks: Landmarks;
+  listing_comments: ListingComments;
   listing_drafts: ListingDrafts;
+  listing_likes: ListingLikes;
   listing_photos: ListingPhotos;
   listing_private_locations: ListingPrivateLocations;
   listings: Listings;
