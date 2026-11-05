@@ -2,7 +2,7 @@
 import { z } from "zod";
 import type { Amenity, BuildingType, ListingType, PhotoArea } from "@/features/listings/types";
 import type { BHK, Furnishing, LifestyleTag } from "@/types/common";
-import { CITIES, cityAt } from "@/lib/constants/places";
+import { inIndia } from "@/lib/constants/places";
 import { CONTACT_INFO_MESSAGE, findContactInfo } from "./contact-info";
 import { AMENITY_OPTIONS, BHK_OPTIONS, PHOTO_AREAS, BUILDING_TYPE_OPTIONS, FURNISHING_OPTIONS, LIFESTYLE_OPTIONS, LISTING_TYPES } from "@/lib/constants/labels";
 
@@ -23,7 +23,7 @@ export const isRoomListing = (type?: ListingType) => !!type && type !== "ENTIRE_
 /** Free text people write: never a phone number or email (the API enforces the same). */
 const noContact = <T extends z.ZodType<string | undefined>>(s: T) => s.refine((t) => !findContactInfo(t), CONTACT_INFO_MESSAGE);
 
-/** A listing's pin must sit inside one of the metros we serve (the same check runs in the API). */
+/** A listing's pin may be anywhere in India (the same check runs in the API). */
 const geo = z
   .object({
     latitude: z.number().min(-90).max(90),
@@ -33,7 +33,7 @@ const geo = z
     region: z.string().optional(),
     postalCode: z.string().optional(),
   })
-  .refine((p) => !!cityAt(p), { message: `We're live in ${CITIES.map((c) => c.name).join(", ")} — drop the pin inside one of these cities.` });
+  .refine(inIndia, { message: "Drop the pin on the building — it needs to be in India." });
 
 export const residentSchema = z.object({
   name: noContact(z.string().trim().min(1, "Name is required").max(40)),

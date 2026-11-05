@@ -308,6 +308,9 @@ export function cityAt(point: GeoLocation): City | undefined {
   return CITIES.find((c) => inBounds(point, c.bounds));
 }
 
+/** Anywhere in India: where a listing may be posted (our metros only shape search, SEO pages and commute). */
+export const inIndia = (point: GeoLocation) => inBounds(point, INDIA_BOUNDS);
+
 export function cityOfRegion(region: Region): CityId {
   return region.startsWith("DELHI_") || region === "GURUGRAM" || region === "NOIDA" || region === "GHAZIABAD" ? "delhi-ncr" : (region.toLowerCase() as CityId);
 }

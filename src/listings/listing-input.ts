@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { cityAt } from '@/lib/constants/places';
+import { inIndia } from '@/lib/constants/places';
 
 /** Server-side check of CreateListingInput / UpdateListingInput (the browser is never trusted). */
 const lifestyle = z.array(z.string().max(30)).max(14);
-/** Inside one of the metros we serve — the same list the web app validates against. */
+/** Anywhere in India — the same check the web app runs. Our metros only shape search, SEO pages and commute. */
 const cityPoint = z
   .object({
     latitude: z.number().min(-90).max(90),
@@ -13,7 +13,7 @@ const cityPoint = z
     region: z.string().max(60).optional(),
     postalCode: z.string().max(12).optional(),
   })
-  .refine((p) => !!cityAt(p), { message: 'This location is outside the cities we serve.' });
+  .refine(inIndia, { message: 'Drop the pin on the building — it needs to be in India.' });
 
 export const listingInput = z
   .object({
