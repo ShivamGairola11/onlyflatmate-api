@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { Transaction } from 'kysely';
 import type { EditableListing, Listing, ListingDraftRecord } from '@/features/listings/types';
+import { cityAt } from '@/lib/constants/places';
 import type { ImportedListing } from '@/lib/api/contract';
 import type { ListingDraft } from '@/lib/validation/listing';
 import { forbidden, invalid, notFound } from '../common/api-error.js';
 import { fuzzedPointSql, latOf, lngOf, pointSql } from '../common/geo.js';
 import { type AppDB, type Database, InjectDb } from '../db/db.module.js';
+import { reverseGeocode } from '../places/geoapify.js';
 import { PlacesService } from '../places/places.service.js';
 import { parseListingText } from './listing-import.js';
 import type { ListingInput } from './listing-input.js';
@@ -47,15 +49,27 @@ export class ListingEditorService {
     return urls.map((u) => byUrl.get(u)!);
   }
 
+  /**
+   * The listing's locality and city labels. Inside a metro: our gazetteer. Outside, there's no locality list
+   * (the nearest one could be 300 km away), so the pin's own address names it.
+   */
+  private async place(point: ListingInput['exactLocation']) {
+    if (cityAt(point)) {
+      const near = await this.places.nearestLocality(point);
+      return { locality: point.locality ?? near.name, city: near.city };
+    }
+    const address = await reverseGeocode(point).catch(() => null);
+    return { locality: point.locality ?? address?.location.locality ?? address?.name ?? null, city: address?.location.city ?? point.city ?? null };
+  }
+
   /** Columns shared by create and update. */
   private async columns(input: ListingInput) {
-    const near = await this.places.nearestLocality(input.exactLocation);
+    const place = await this.place(input.exactLocation);
     return {
       type: input.type,
       title: input.title || autoTitle(input),
       description: input.description ?? '',
-      locality: input.exactLocation.locality ?? near.name,
-      city: near.city,
+      ...place,
       bhk: input.property.bhk,
       building_type: input.property.buildingType,
       building_type_other: input.property.buildingType === 'OTHER' ? input.property.buildingTypeOther : null,
