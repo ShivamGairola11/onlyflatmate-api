@@ -14,6 +14,7 @@ import {
   FlatmatesController,
   FlatmatesService,
 } from './flatmates/flatmates.js';
+import { FeedController, FeedService } from './feed/feed.js';
 import { GroupsController, GroupsService } from './groups/groups.js';
 import { ListingEditorService } from './listings/listing-editor.service.js';
 import { ListingCleanupService } from './listings/listing-cleanup.js';
@@ -62,6 +63,7 @@ class HealthController {
     ListingsController,
     ListingDraftController,
     SavedController,
+    FeedController,
     CommuteController,
     UploadsController,
     UsersController,
@@ -86,6 +88,7 @@ class HealthController {
     UsersService,
     FlatmatesService,
     GroupsService,
+    FeedService,
     MessagingService,
     EventsService,
     AdminGuard,

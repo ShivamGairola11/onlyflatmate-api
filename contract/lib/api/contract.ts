@@ -10,6 +10,7 @@
 import type { DemoPersona, OAuthProvider, OtpChallenge, Session } from "@/features/auth/types";
 import type { Commute, CommuteRoute } from "@/features/commute/types";
 import type { FlatmateProfile, FlatmateProfileInput, FlatmateSearchParams } from "@/features/flatmates/types";
+import type { FeedComment, FeedLikeState, FeedPage, FeedParams } from "@/features/feed/types";
 import type { AddMemberInput, CreateGroupInput, FlatGroup, GroupMatch, UpdateGroupInput } from "@/features/groups/types";
 import type {
   CreateListingInput,
@@ -436,6 +437,18 @@ export interface ApiClient {
     listings(): Promise<Listing[]>;
     save(listingId: ID): Promise<SavedListing>;
     remove(listingId: ID): Promise<void>;
+  };
+  feed: {
+    /** The newest live listings in a metro, as posts with their poster, likes and comment counts. */
+    list(params: FeedParams): Promise<FeedPage>;
+    like(listingId: ID): Promise<FeedLikeState>;
+    unlike(listingId: ID): Promise<FeedLikeState>;
+    /** Oldest first, newest 100. */
+    comments(listingId: ID): Promise<FeedComment[]>;
+    /** No phone numbers or emails, like every free-text field. */
+    addComment(listingId: ID, body: string): Promise<FeedComment>;
+    /** The comment's author, or the lister on their own listing. */
+    removeComment(commentId: ID): Promise<void>;
   };
   flatmates: {
     search(params: FlatmateSearchParams): Promise<FlatmateProfile[]>;

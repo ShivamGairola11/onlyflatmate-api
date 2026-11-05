@@ -183,6 +183,13 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
 - **Commute model:** car = free-flow×1.6 + 4 min; bike = 0.8×car, only under 35 km; metro = max(8, 10 + 1.75·km + 7·interchanges). Labelled as an estimate.
 - Blocks hide listings in both directions (signed-in only).
 
+## Feed (likes & comments)
+
+- `GET /feed?city=` (public): the metro's live listings from `ListingsService.search` (city bounds, NEWEST, 10 a page, max 30), so visibility, the signed-out trim and blocks are the search's. Each post adds the poster (first name + avatar), `postedAt` = listing `created_at`, like and comment counts, `likedByMe`. Code: `src/feed/feed.ts`, tables `listing_likes` / `listing_comments` (migration `20261105000000_listing_feed.sql`).
+- Likes: signed in, one per person per listing (PK), idempotent; `DELETE` returns the new state.
+- Comments: signed in, 1–500 chars, **no phone numbers or emails** (`assertNoContactInfo` — otherwise comments would bypass the Contact Pass), 30 an hour. Listed oldest first, newest 100, minus people blocked either way. Deletable by the author or the listing's lister. No reports or edit yet.
+- Both disappear with the listing or the profile (cascade). Not on removed listings (404).
+
 ## Flatmates & groups
 
 - **Flatmate profile:** bio 20–500 chars; budget ₹2k–2L (min ≤ max); areas 1–5; lookingFor 1–5; lifestyle ≤ 8; languages ≤ 8. Search ≤ 200 results; area filter = the area + 6 km.
@@ -225,6 +232,7 @@ No A/B test is running: there's no assignment or experiment framework. See `revi
   - `test/access.e2e-spec.ts` creates 130 fresh listings and removes them afterwards.
   - `test/account-delete.e2e-spec.ts`: deleting removes the user and profile, keeps the payment detached.
   - `test/pass-reminders.e2e-spec.ts`: one reminder 24 h before expiry, none for renewed or later passes, a failed send is retried. (Any failed send logs `Not sent (...)` with Resend's status, from `src/common/email.ts`.)
+  - `test/feed.e2e-spec.ts`: newest-first posts with posters, like once/unlike, comments refuse contact details, author or lister can delete.
   - `test/reply-guarantee.e2e-spec.ts`: an unanswered paid pass gets 3 days exactly once; answered, complimentary and under-48 h passes don't; the proof endpoint works signed out.
   - It covers: public listing fields, the residents/lister trim, paging past 120, the batch trim, blocks both ways (404, same message), flatmate and group trims, matches 401, sign-in for save/contact, and 402 without a pass.
 - **Web self-checks:** `npx tsx scripts/check-pending-action.ts`, `check-safe-return-to.ts`, `check-contact-info.ts`.
